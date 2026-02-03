@@ -20,9 +20,9 @@ module {
 	public func initMain() : T.Main = {
 		name = "";
 		expires_at = 0;
-		managers = RBTree.empty();
+		spenders = RBTree.empty();
 	};
-	public func isMain(m : T.Main) : Bool = Text.size(m.name) > 0 or m.expires_at > 0 or RBTree.size(m.managers) > 0;
+	public func isMain(m : T.Main) : Bool = Text.size(m.name) > 0 or m.expires_at > 0 or RBTree.size(m.spenders) > 0;
 
 	public func getRole(u : T.User, s : Blob) : T.Role = switch (RBTree.get(u, Blob.compare, s)) {
 		case (?found) found;
@@ -34,8 +34,6 @@ module {
 	};
 	public func saveOwner<V>(acs : T.Accounts<V>, p : Principal, ac : RBTree.Type<Blob, V>) : T.Accounts<V> = if (RBTree.size(ac) > 0) RBTree.insert(acs, Principal.compare, p, ac) else RBTree.delete(acs, Principal.compare, p);
 
-	public func saveSub<V>(subs : T.Subs<V>, b : Blob, v : V) : T.Subs<V> = if (RBTree.size(subs) > 0) RBTree.insert(subs, Blob.compare, b, v) else RBTree.delete(subs, Blob.compare, b);
-
 	public func forceMain(r : T.Role) : T.Main = switch r {
 		case (#Main m) m;
 		case _ initMain();
@@ -45,11 +43,34 @@ module {
 		case (#Proxy(main_a, expiry)) if (expiry > 0) RBTree.insert(u, Blob.compare, s, #Proxy(main_a, expiry)) else RBTree.delete(u, Blob.compare, s);
 	};
 
-	public func dedupeRegister((ap, a): (Principal, T.RegisterArg), (bp, b): (Principal, T.RegisterArg)) : Order.Order {
-		#equal
+	public func dedupeRegister((ap, a) : (Principal, T.RegisterArg), (bp, b) : (Principal, T.RegisterArg)) : Order.Order {
+		#equal;
 	};
 
-	public func dedupeApprove((ap, a): (Principal, T.ApproveArg), (bp, b): (Principal, T.ApproveArg)) : Order.Order {
-		#equal
+	public func dedupeApprove((ap, a) : (Principal, T.ApproveArg), (bp, b) : (Principal, T.ApproveArg)) : Order.Order {
+		#equal;
+	};
+
+	public func compareProxyExpiry((at : Nat64, ap : Principal, as : Blob), (bt : Nat64, bp : Principal, bs : Blob)) : Order.Order {
+		#equal; // todo: finish me
+	};
+
+	public func compareNameExpiry((at : Nat64, an : Text), (bt : Nat64, bn : Text)) : Order.Order {
+		#equal; // todo: finish me
+	};
+
+	public func compareManagerExpiry(
+		(
+			at : Nat64,
+			(afromowner : Principal, afromsub : Blob),
+			(aspenderowner : Principal, aspendersub : Blob),
+		),
+		(
+			bt : Nat64,
+			(bfromowner : Principal, bfromsub : Blob),
+			(bspenderowner : Principal, bspendersub : Blob),
+		),
+	) : Order.Order {
+		#equal; // todo: finish me
 	};
 };
