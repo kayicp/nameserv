@@ -17,6 +17,14 @@ import Result "../util/motoko/Result";
 import Linker "linker";
 
 module {
+	public func getPrincipal<V>(tree : RBTree.Type<Principal, V>, k : Principal, default : V) : V = OptionBase.get(RBTree.get(tree, Principal.compare, k), default);
+
+	public func getBlob<V>(tree : RBTree.Type<Blob, V>, k : Blob, default : V) : V = OptionBase.get(RBTree.get(tree, Blob.compare, k), default);
+
+	public func savePrincipal<V>(tree : RBTree.Type<Principal, V>, k : Principal, v : V, is_insert : Bool) : RBTree.Type<Principal, V> = if (is_insert) RBTree.insert(tree, Principal.compare, k, v) else RBTree.delete(tree, Principal.compare, k);
+
+	public func saveBlob<V>(tree : RBTree.Type<Blob, V>, k : Blob, v : V, is_insert : Bool) : RBTree.Type<Blob, V> = if (is_insert) RBTree.insert(tree, Blob.compare, k, v) else RBTree.delete(tree, Blob.compare, k);
+
 	public func initMain() : T.Main = {
 		name = "";
 		expires_at = 0;
@@ -24,24 +32,14 @@ module {
 	};
 	public func isMain(m : T.Main) : Bool = Text.size(m.name) > 0 or m.expires_at > 0 or RBTree.size(m.spenders) > 0;
 
-	public func getRole(u : T.User, s : Blob) : T.Role = switch (RBTree.get(u, Blob.compare, s)) {
-		case (?found) found;
-		case _ #Main(initMain());
-	};
-	public func getOwner<V>(acs : T.Accounts<V>, p : Principal) : RBTree.Type<Blob, V> = switch (RBTree.get(acs, Principal.compare, p)) {
-		case (?found) found;
-		case _ RBTree.empty();
-	};
-	public func saveOwner<V>(acs : T.Accounts<V>, p : Principal, ac : RBTree.Type<Blob, V>) : T.Accounts<V> = if (RBTree.size(ac) > 0) RBTree.insert(acs, Principal.compare, p, ac) else RBTree.delete(acs, Principal.compare, p);
-
-	public func forceMain(r : T.Role) : T.Main = switch r {
-		case (#Main m) m;
-		case _ initMain();
-	};
-	public func saveRole(u : T.User, s : Blob, r : T.Role) : T.User = switch r {
-		case (#Main m) if (isMain(m)) RBTree.insert(u, Blob.compare, s, #Main m) else RBTree.delete(u, Blob.compare, s);
-		case (#Proxy(main_a, expiry)) if (expiry > 0) RBTree.insert(u, Blob.compare, s, #Proxy(main_a, expiry)) else RBTree.delete(u, Blob.compare, s);
-	};
+	// public func forceMain(r : T.Role) : T.Main = switch r {
+	//   case (#Main m) m;
+	//   case _ initMain();
+	// };
+	// public func saveRole(u : T.User, s : Blob, r : T.Role) : T.User = switch r {
+	//   case (#Main m) if (isMain(m)) RBTree.insert(u, Blob.compare, s, #Main m) else RBTree.delete(u, Blob.compare, s);
+	//   case (#Proxy(main_a, expiry)) if (expiry > 0) RBTree.insert(u, Blob.compare, s, #Proxy(main_a, expiry)) else RBTree.delete(u, Blob.compare, s);
+	// };
 
 	public func dedupeRegister((ap, a) : (Principal, T.RegisterArg), (bp, b) : (Principal, T.RegisterArg)) : Order.Order {
 		#equal;

@@ -11,22 +11,22 @@ module {
 	public type Subs<T> = RBTree.Type<Blob, T>;
 	public type Accounts<T> = RBTree.Type<Principal, Subs<T>>;
 	public type Nats<T> = RBTree.Type<Nat, T>;
+	public type Name = { name : Text; expires_at : Nat64 };
 	public type Main = {
 		name : Text;
 		expires_at : Nat64;
 		spenders : Accounts<(expires_at : ?Nat64)>;
 	};
-	public type Role = {
-		#Proxy : (main : ICRC1T.Account, expires_at : Nat64);
-		#Main : Main;
-	};
-	public type User = RBTree.Type<(sub : Blob), Role>;
+	public type User = RBTree.Type<(sub : Blob), Main>;
+	public type Proxy = RBTree.Type<(sub : Blob), (main_p : Principal, main_sub : ?Blob, expires_at : Nat64)>;
 
 	public type RegisterArg = {
 		proxy_subaccount : ?Blob; //
-		name : ?Text; // null if renewing
-		amount : Nat; // icp
+		name : Text;
+		amount : Nat; // icp/tcycles
+		token : Principal;
 		fee : ?Nat; //
+		payer : ?ICRC1T.Account; // todo: implement
 		memo : ?Blob; //
 		created_at : ?Nat64; //
 	};
@@ -34,11 +34,13 @@ module {
 		#GenericError : Error.Type;
 		#UnproxiedCaller;
 		#UnknownProxy;
+		#UnknownLengthTier;
+		#UnknownDurationPackage : { xdr_permyriad_per_icp : Nat };
 		#Locked;
-		#UnnamedAccount;
+		#Unnamed;
 		#NameTooLong : { maximum_length : Nat };
 		#NamedAccount : { name : Text; expires_at : Nat64 };
-		#ReservedName : { main : ICRC1T.Account };
+		#NameReserved : { by : ICRC1T.Account };
 		#BadFee : { expected_fee : Nat };
 		#InsufficientLinkAllowance : { allowance : Nat };
 		#InsufficientLinkCredits;
@@ -47,7 +49,7 @@ module {
 		#CreatedInFuture : { time : Nat64 };
 		#TooOld;
 		#Duplicate : { of : Nat };
-		#FailedTransfer : Linker.TransferFrom1Err;
+		#TransferFailed : Linker.TransferFrom1Err;
 	};
 	public type RegisterRes = Result.Type<Nat, RegisterErr>;
 
@@ -60,8 +62,8 @@ module {
 	public type TransferErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#SenderIsProxy : { main : ICRC1T.Account };
-		#RecipientIsProxy : { main : ICRC1T.Account };
+		#SenderIsProxy : { of : ICRC1T.Account };
+		#RecipientIsProxy : { of : ICRC1T.Account };
 		#LockedSender;
 		#UnnamedSender;
 		#LockedRecipient;
@@ -82,7 +84,7 @@ module {
 	public type ApproveErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#SenderIsProxy : { main : ICRC1T.Account };
+		#SenderIsProxy : { of : ICRC1T.Account };
 		#Locked;
 		#Unnamed;
 		#InsufficientDuration : { remaining : Nat64 };
@@ -103,7 +105,7 @@ module {
 	public type RevokeErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#SenderIsProxy : { main : ICRC1T.Account };
+		#SenderIsProxy : { of : ICRC1T.Account };
 		#Locked;
 		#Unnamed;
 		#InsufficientDuration : { remaining : Nat64 };
@@ -124,8 +126,8 @@ module {
 		#LockedSender;
 		#UnnamedSender;
 		#UnknownProxy;
-		#SenderIsProxy : { main : ICRC1T.Account };
-		#RecipientIsProxy : { main : ICRC1T.Account };
+		#SenderIsProxy : { of : ICRC1T.Account };
+		#RecipientIsProxy : { of : ICRC1T.Account };
 		#LockedRecipient;
 		#NamedRecipient : { name : Text; expires_at : Nat64 };
 		#InsufficientDuration : { remaining : Nat64 };

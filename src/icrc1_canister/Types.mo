@@ -6,7 +6,7 @@ import RBTree "../util/motoko/StableCollections/RedBlackTree/RBTree";
 
 module {
   public let ICP_ID = "ryjl3-tyaaa-aaaaa-aaaba-cai";
-  
+  public let TCYCLES_ID = "um5iw-rqaaa-aaaaq-qaaba-cai";
 
   public let NAME = "icrc1:name";
   public let SYMBOL = "icrc1:symbol";
