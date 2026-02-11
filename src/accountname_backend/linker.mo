@@ -206,7 +206,11 @@ module {
 		results : [Blob];
 		callbacks : [Callback_8];
 	};
-	public type TokenApproval = { allowance : Nat; expires_at : Nat64 };
+	public type TokenApproval = {
+		nonce : ?Nat;
+		allowance : Nat;
+		expires_at : Nat64;
+	};
 	public type TokensOfArg = {
 		previous : ?Principal;
 		take : ?Nat;
@@ -250,22 +254,22 @@ module {
 		#GenericError : Type;
 		#UnknownSpender;
 		#Duplicate : { of : Nat };
-		#InsufficientLinkCredits;
-		#InsufficientLinkAllowance : { allowance : Nat };
-		#CreatedInFuture : { time : Nat64 };
-		#InsufficientTokenAllowance : { allowance : Nat };
-		#UnknownProxy;
 		#NoEligibleMain : {
+			total : Nat;
 			maximum_allowance : { main : ?Account; available : Nat };
-			total_checked : Nat;
 			maximum_balance : { main : ?Account; available : Nat };
 		};
-		#TooOld;
 		#NoSufficientLinkAllowance : {
 			total_active : Nat;
 			total_valid : Nat;
 			maximum : { main : ?Account; available : Nat };
 		};
+		#InsufficientLinkCredits;
+		#InsufficientLinkAllowance : { allowance : Nat };
+		#CreatedInFuture : { time : Nat64 };
+		#InsufficientTokenAllowance : { allowance : Nat };
+		#UnknownProxy;
+		#TooOld;
 		#TransferFailed : TransferFromError;
 		#InsufficientTokenBalance : { balance : Nat };
 		#UnknownToken;

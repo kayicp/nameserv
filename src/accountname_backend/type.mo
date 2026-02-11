@@ -18,15 +18,14 @@ module {
 		spenders : Accounts<(expires_at : ?Nat64)>;
 	};
 	public type User = RBTree.Type<(sub : Blob), Main>;
-	public type Proxy = RBTree.Type<(sub : Blob), (main_p : Principal, main_sub : ?Blob, expires_at : Nat64)>;
+	public type Proxy = RBTree.Type<(sub : Blob), (main_p : Principal, main_sub : Blob, expires_at : Nat64)>;
 
 	public type RegisterArg = {
 		proxy_subaccount : ?Blob; //
-		name : Text;
+		name : Text; // todo: validate
 		amount : Nat; // icp/tcycles
 		token : Principal;
-		fee : ?Nat; //
-		payer : ?ICRC1T.Account; // todo: implement
+		payer : ?ICRC1T.Account; //
 		memo : ?Blob; //
 		created_at : ?Nat64; //
 	};
@@ -41,7 +40,6 @@ module {
 		#NameTooLong : { maximum_length : Nat };
 		#NamedAccount : { name : Text; expires_at : Nat64 };
 		#NameReserved : { by : ICRC1T.Account };
-		#BadFee : { expected_fee : Nat };
 		#InsufficientLinkAllowance : { allowance : Nat };
 		#InsufficientLinkCredits;
 		#InsufficientTokenBalance : { balance : Nat };
