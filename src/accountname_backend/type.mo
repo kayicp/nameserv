@@ -46,6 +46,15 @@ module {
 		#InsufficientLinkCredits;
 		#InsufficientTokenBalance : { balance : Nat };
 		#InsufficientTokenAllowance : { allowance : Nat };
+		#NoSufficientLinkAllowance : {
+			total : Nat;
+			maximum : { available : Nat; main : ?ICRC1T.Account };
+		};
+		#NoEligibleMain : {
+			total : Nat;
+			maximum_balance : { available : Nat; main : ?ICRC1T.Account };
+			maximum_allowance : { available : Nat; main : ?ICRC1T.Account };
+		};
 		#CreatedInFuture : { time : Nat64 };
 		#TooOld;
 		#Duplicate : { of : Nat };

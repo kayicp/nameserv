@@ -1,4 +1,5 @@
 import RBTree "../util/motoko/StableCollections/RedBlackTree/RBTree";
+import Queue "../util/motoko/StableCollections/Queue";
 import T "type";
 import L "lib";
 import Result "../util/motoko/Result";
@@ -230,30 +231,18 @@ shared (install) persistent actor class Canister(
     };
     if (selected_package.total == 0) return #Err(#UnknownDurationPackage { xdr_permyriad_per_icp });
 
-    // let new_name_expiry = name_start + Time64.DAYS(Nat64.fromNat(selected_package.year * 365)) + Time64.DAYS(Nat64.fromNat(selected_package.months_bonus * 30));
-
-    // let start_expiry = if (arg.name == main.name) Nat64.max(now, main.expires_at) else {
-    //   if (main.expires_at > now) return #Err(#NamedAccount main);
-    //   // todo: validate
-    //   switch (RBTree.get(names, Text.compare, defined)) {
-    //     case (?(name_p, name_sub)) if (name_p != new_main_a.owner or name_sub != main_sub) return #Err(#NameReserved { by = { owner = name_p; subaccount = Subaccount.opt(name_sub) } });
-    //     case _ ();
-    //   };
-    //   now; // name belongs to caller, or no one
-    // };
     let (token_can, token_fee) = if (is_icp) (icp_token, icp_fee) else (tcycles_token, tcycles_fee);
+    let xfer_and_fee = arg.amount + token_fee;
     let linker = actor (Linker.ID) : Linker.Canister;
-    switch (arg.payer) {
+    let (main_a, main_sub) = switch (arg.payer) {
       case (?main_a) {
-        let links_call = linker.accl_icrc1_allowances_of([{
+        let links_call = linker.accl_icrc1_allowances([{
           arg with main = main_a;
           proxy = proxy_a;
           spender = self_a;
         }]);
         let (token_bal_call, token_aprv_call) = (token_can.icrc1_balance_of(main_a), token_can.icrc2_allowance({ account = main_a; spender = self_a }));
         let (link, token_bal, token_aprv) = ((await links_call).results[0], await token_bal_call, await token_aprv_call);
-
-        let xfer_and_fee = arg.amount + token_fee;
         if (link.allowance < xfer_and_fee) return #Err(#InsufficientLinkAllowance link);
         if (link.expires_at < now) return #Err(#InsufficientLinkAllowance { allowance = 0 });
         if (token_bal < xfer_and_fee) return #Err(#InsufficientTokenBalance { balance = token_bal });
@@ -262,35 +251,80 @@ shared (install) persistent actor class Canister(
           case (?found) if (found < now) return #Err(#InsufficientTokenAllowance { allowance = 0 });
           case _ ();
         };
+        (main_a, Subaccount.get(main_a.subaccount));
       };
       case _ {
-        // let links_call = linker.
+        let links = await linker.accl_icrc1_sufficient_allowances({
+          arg with proxy = proxy_a;
+          spender = self_a;
+          allowance = xfer_and_fee;
+          previous = null;
+          take = null;
+        });
+        var calls = Queue.empty<(Linker.FilteredAllowance, Blob, async Nat, async ICRC1T.Allowance)>();
+        var maximum_allowance = { available = 0; main = null : ?ICRC1T.Account };
+        for (filtered in links.results.vals()) {
+          if (filtered.allowance > maximum_allowance.available) maximum_allowance := {
+            available = filtered.allowance;
+            main = ?filtered.main;
+          };
+          let main_sub = Subaccount.get(filtered.main.subaccount);
+          calls := Queue.insertHead(calls, (filtered, main_sub, token_can.icrc1_balance_of(filtered.main), token_can.icrc2_allowance({ account = filtered.main; spender = self_a })));
+        };
+        let total_calls = Queue.size(calls);
+        if (total_calls == 0) return #Err(#NoSufficientLinkAllowance { total = links.results.size(); maximum = maximum_allowance });
+
+        var maximum_balance = { available = 0; main = null : ?ICRC1T.Account };
+        maximum_allowance := maximum_balance;
+        var allowances = RBTree.empty<Nat, T.Accounts<ICRC1T.Account>>();
+        label calling for ((filtered, main_sub, bal_call, aprv_call) in Queue.iterTail(calls)) {
+          let (bal, aprv) = (await bal_call, await aprv_call);
+          switch (aprv.expires_at) {
+            case (?found) if (found < now) continue calling;
+            case _ ();
+          };
+          if (bal > maximum_balance.available) maximum_balance := {
+            available = bal;
+            main = ?filtered.main;
+          };
+          if (aprv.allowance > maximum_allowance.available) maximum_allowance := {
+            available = aprv.allowance;
+            main = ?filtered.main;
+          };
+          var main_ps = Option.get(RBTree.get(allowances, Nat.compare, filtered.allowance), RBTree.empty());
+          var main_subs = L.getPrincipal(main_ps, filtered.main.owner, RBTree.empty());
+          main_subs := L.saveBlob(main_subs, main_sub, filtered.main, bal >= xfer_and_fee and aprv.allowance >= xfer_and_fee);
+          main_ps := L.savePrincipal(main_ps, filtered.main.owner, main_subs, RBTree.size(main_subs) > 0);
+          allowances := if (RBTree.size(main_ps) > 0) RBTree.insert(allowances, Nat.compare, filtered.allowance, main_ps) else RBTree.delete(allowances, Nat.compare, filtered.allowance);
+        };
+        var payer : ?(ICRC1T.Account, Blob) = null;
+        label find_nearest for ((allowance, main_ps) in RBTree.entries(allowances)) {
+          for ((main_p, main_subs) in RBTree.entries(main_ps)) {
+            for ((main_sub, main_a) in RBTree.entries(main_subs)) {
+              payer := ?(main_a, main_sub);
+              break find_nearest;
+            };
+          };
+        };
+        switch payer {
+          case (?found) found;
+          case _ return #Err(#NoEligibleMain { total = total_calls; maximum_balance; maximum_allowance });
+        };
       };
     };
+    var main_u = L.getPrincipal(users, main_a.owner, RBTree.empty());
+    var main = L.getBlob(main_u, main_sub, L.initMain());
+    let start_expiry = if (arg.name == main.name) Nat64.max(now, main.expires_at) else {
+      if (main.expires_at > now) return #Err(#NamedAccount main);
+      // todo: validate
+      switch (RBTree.get(names, Text.compare, arg.name)) {
+        case (?(name_p, name_sub)) if (name_p != main_a.owner or name_sub != main_sub) return #Err(#NameReserved { by = { owner = name_p; subaccount = Subaccount.opt(name_sub) } });
+        case _ ();
+      };
+      now; // name belongs to caller, or no one
+    };
+    let new_name_expiry = start_expiry + Time64.DAYS(Nat64.fromNat(selected_package.year * 365)) + Time64.DAYS(Nat64.fromNat(selected_package.months_bonus * 30));
 
-    // let new_main_a = switch ((await accl.accl_icrc1_proxies_of([proxy_a]))[0]) {
-    //   case (?found) found;
-    //   case _ return #Err(#UnproxiedCaller);
-    // };
-    // let accl_p = Principal.fromText(Linker.ID);
-    // let link_arg = { proxy = proxy_a; spender = self_a; token = icp_p };
-    // let (icp_fee_call, link_limit_call) = (icp.icrc1_fee(), accl.accl_icrc1_allowances_of([link_arg]));
-    // let (icp_fee, link) = (await icp_fee_call, (await link_limit_call)[0]);
-    // let amount_and_fee = arg.amount + icp_fee;
-    // if (link.allowance < amount_and_fee) return #Err(#InsufficientLinkAllowance link);
-    // switch (link.expires_at) {
-    //   case (?found) if (found < now) return #Err(#InsufficientLinkAllowance { allowance = 0 });
-    //   case _ ();
-    // };
-    // let (icp_bal_call, link_credit, icp_allow_call) = (icp.icrc1_balance_of(new_main_a), accl.accl_credits_of([new_main_a]), icp.icrc2_allowance({ account = new_main_a; spender = { owner = accl_p; subaccount = null } }));
-    // let (icp_bal, accl_credits, icp_aprv) = (await icp_bal_call, (await link_credit)[0], await icp_allow_call);
-    // if (accl_credits == 0) return #Err(#InsufficientLinkCredits);
-    // if (icp_bal < amount_and_fee) return #Err(#InsufficientTokenBalance { balance = icp_bal });
-    // if (icp_aprv.allowance < amount_and_fee) return #Err(#InsufficientTokenAllowance icp_aprv);
-    // switch (icp_aprv.expires_at) {
-    //   case (?found) if (found < now) return #Err(#InsufficientTokenAllowance { allowance = 0 });
-    //   case _ ();
-    // };
     // var proxy_ptr = L.getPrincipal(proxies, proxy_a.owner, RBTree.empty());
     // let proxy_sub = Subaccount.get(proxy_a.subaccount);
     // let (old_main_a, old_proxy_expiry) = L.getBlob(proxy_ptr, proxy_sub, (new_main_a, 0 : Nat64));
@@ -301,29 +335,6 @@ shared (install) persistent actor class Canister(
     // var locker = L.getOwner(main.spenders, self_a.owner);
     // if (RBTree.size(locker) > 0) return #Err(#Locked);
 
-    // let (new_name, name_size, name_start) = switch (arg.name) {
-    //   case (?defined) {
-    //     let name_size = Text.size(defined);
-    //     if (name_size == 0) return Error.text("Name must not be empty");
-    //     let maximum_length = env.name.price_tiers[env.name.price_tiers.size() - 1].length.max;
-    //     if (name_size > maximum_length) return #Err(#NameTooLong { maximum_length });
-    //     let start_expiry = if (defined == main.name) Nat64.max(now, main.expires_at) else {
-    //       if (main.expires_at > now) return #Err(#NamedAccount main);
-    //       // todo: validate
-    //       switch (RBTree.get(names, Text.compare, defined)) {
-    //         case (?(name_p, name_sub)) if (name_p != new_main_a.owner or name_sub != main_sub) return #Err(#NameReserved { by = { owner = name_p; subaccount = Subaccount.opt(name_sub) } });
-    //         case _ ();
-    //       };
-    //       now; // name belongs to caller, or no one
-    //     };
-    //     (defined, name_size, start_expiry);
-    //   };
-    //   case _ {
-    //     let name_size = Text.size(main.name);
-    //     if (name_size == 0) return #Err(#Unnamed);
-    //     (main.name, name_size, Nat64.max(now, main.expires_at)); // time extension
-    //   };
-    // };
     // var fee_base = 0;
     // label sizing for (tier in env.name.price_tiers.vals()) if (name_size >= tier.length.min and name_size <= tier.length.max) {
     //   fee_base := tier.tcycles_fee_multiplier * icp_fee;

@@ -1,32 +1,27 @@
-import RBTree "../util/motoko/StableCollections/RedBlackTree/RBTree";
-import Value "../util/motoko/Value";
-import Error "../util/motoko/Error";
-import Result "../util/motoko/Result";
-import ICRC1T "../icrc1_canister/Types";
-
 module {
 	public let ID = "lhuc4-nqaaa-aaaan-qz3gq-cai";
+	public type Account = { owner : Principal; subaccount : ?Blob };
 	public type Allowance1Arg = {
 		token : Principal;
-		main : ICRC1T.Account;
-		proxy : ICRC1T.Account;
-		spender : ICRC1T.Account;
+		main : Account;
+		proxy : Account;
+		spender : Account;
 	};
 	public type AllowancesOfRes = {
 		total : Nat;
 		results : [TokenApproval];
-		callbacks : [Callback_8];
+		callbacks : [Callback_9];
 	};
 	public type Approve1Arg = {
 		token : Principal;
 		main_subaccount : ?Blob;
 		memo : ?Blob;
 		created_at : ?Nat64;
-		proxy : ICRC1T.Account;
+		proxy : Account;
 		amount : Nat;
 		expected_allowance : ?Nat;
 		expires_at : Nat64;
-		spender : ICRC1T.Account;
+		spender : Account;
 	};
 	public type Approve1Err = {
 		#GenericError : Type;
@@ -34,12 +29,12 @@ module {
 		#InsufficientLinkCredits;
 		#ProxyIsMain;
 		#ExpiresTooLate : { maximum_expiry : Nat64 };
-		#CallerIsProxy : { of : ICRC1T.Account };
+		#CallerIsProxy : { of : Account };
 		#CreatedInFuture : { time : Nat64 };
 		#LinkAllowanceChanged : { allowance : Nat };
 		#TooOld;
 		#Expired : { time : Nat64 };
-		#ProxyReserved : { by : ICRC1T.Account };
+		#ProxyReserved : { by : Account };
 	};
 	public type Approve1Res = { #Ok : Nat; #Err : Approve1Err };
 	public type Callback = {
@@ -50,56 +45,61 @@ module {
 		args : TokensOfArg;
 		query_func : shared query TokensOfArg -> async TokensOfRes;
 	};
+	public type Callback_10 = {
+		args : [Account];
+		query_func : shared query [Account] -> async CreditsOfRes;
+	};
 	public type Callback_2 = {
+		args : Filter1Arg;
+		query_func : shared query Filter1Arg -> async Filter1Res;
+	};
+	public type Callback_3 = {
 		args : SpendersOfArg;
 		query_func : shared query SpendersOfArg -> async SpendersOfRes;
 	};
-	public type Callback_3 = {
+	public type Callback_4 = {
 		args : SpenderSubsOfArg;
 		query_func : shared query SpenderSubsOfArg -> async SpenderSubsOfRes;
 	};
-	public type Callback_4 = {
+	public type Callback_5 = {
 		args : ProxySubsOfArg;
 		query_func : shared query ProxySubsOfArg -> async ProxySubsOfRes;
 	};
-	public type Callback_5 = {
+	public type Callback_6 = {
 		args : ProxiesOfArg;
 		query_func : shared query ProxiesOfArg -> async ProxiesOfRes;
 	};
-	public type Callback_6 = {
+	public type Callback_7 = {
 		args : MainsOfArg;
 		query_func : shared query MainsOfArg -> async MainsOfRes;
 	};
-	public type Callback_7 = {
+	public type Callback_8 = {
 		args : SubmainsOfArg;
 		query_func : shared query SubmainsOfArg -> async SubmainsOfRes;
 	};
-	public type Callback_8 = {
+	public type Callback_9 = {
 		args : [Allowance1Arg];
 		query_func : shared query [Allowance1Arg] -> async AllowancesOfRes;
 	};
-	public type Callback_9 = {
-		args : [ICRC1T.Account];
-		query_func : shared query [ICRC1T.Account] -> async CreditsOfRes;
-	};
 	public type Canister = actor {
 		accl_credit_packages : shared query () -> async [CreditPackage];
-		accl_credits_of : shared query [ICRC1T.Account] -> async CreditsOfRes;
-		accl_icrc1_allowances_of : shared query [
+		accl_credits : shared query [Account] -> async CreditsOfRes;
+		accl_icrc1_allowances : shared query [
 			Allowance1Arg
 		] -> async AllowancesOfRes;
 		accl_icrc1_approve : shared [Approve1Arg] -> async [Approve1Res];
-		accl_icrc1_main_subaccounts_of : shared query SubmainsOfArg -> async SubmainsOfRes;
-		accl_icrc1_mains_of : shared query MainsOfArg -> async MainsOfRes;
-		accl_icrc1_proxies_of : shared query ProxiesOfArg -> async ProxiesOfRes;
-		accl_icrc1_proxy_subaccounts_of : shared query ProxySubsOfArg -> async ProxySubsOfRes;
-		accl_icrc1_spender_subaccounts_of : shared query SpenderSubsOfArg -> async SpenderSubsOfRes;
-		accl_icrc1_spenders_of : shared query SpendersOfArg -> async SpendersOfRes;
-		accl_icrc1_tokens_of : shared query TokensOfArg -> async TokensOfRes;
+		accl_icrc1_main_subaccounts : shared query SubmainsOfArg -> async SubmainsOfRes;
+		accl_icrc1_mains : shared query MainsOfArg -> async MainsOfRes;
+		accl_icrc1_proxies : shared query ProxiesOfArg -> async ProxiesOfRes;
+		accl_icrc1_proxy_subaccounts : shared query ProxySubsOfArg -> async ProxySubsOfRes;
+		accl_icrc1_spender_subaccounts : shared query SpenderSubsOfArg -> async SpenderSubsOfRes;
+		accl_icrc1_spenders : shared query SpendersOfArg -> async SpendersOfRes;
+		accl_icrc1_sufficient_allowances : shared query Filter1Arg -> async Filter1Res;
+		accl_icrc1_tokens : shared query TokensOfArg -> async TokensOfRes;
 		accl_icrc1_transfer_from : shared TransferFrom1Arg -> async TransferFrom1Res;
 		accl_mint_credits : shared TopupArg -> async TopupRes;
-		accl_service_provider : shared query () -> async ICRC1T.Account;
-		accl_subaccounts_of : shared query SubaccountsOfArg -> async SubaccountsOfRes;
+		accl_service_provider : shared query () -> async Account;
+		accl_subaccounts : shared query SubaccountsOfArg -> async SubaccountsOfRes;
 	};
 	public type CreditPackage = {
 		credits : Nat;
@@ -109,61 +109,79 @@ module {
 	public type CreditsOfRes = {
 		total : Nat;
 		results : [Nat];
-		callbacks : [Callback_9];
+		callbacks : [Callback_10];
+	};
+	public type Filter1Arg = {
+		token : Principal;
+		previous : ?Account;
+		take : ?Nat;
+		allowance : Nat;
+		proxy : Account;
+		spender : Account;
+	};
+	public type Filter1Res = {
+		total : Nat;
+		results : [FilteredAllowance];
+		callbacks : [Callback_2];
+	};
+	public type FilteredAllowance = {
+		main : Account;
+		allowance : Nat;
+		expires_at : Nat64;
 	};
 	public type MainsOfArg = {
 		token : Principal;
 		previous : ?Principal;
 		take : ?Nat;
-		proxy : ICRC1T.Account;
-		spender : ICRC1T.Account;
+		proxy : Account;
+		spender : Account;
 	};
 	public type MainsOfRes = {
 		total : Nat;
 		results : [Principal];
-		callbacks : [Callback_6];
+		callbacks : [Callback_7];
 	};
 	public type ProxiesOfArg = {
 		previous : ?Principal;
-		main : ICRC1T.Account;
+		main : Account;
 		take : ?Nat;
 	};
 	public type ProxiesOfRes = {
 		total : Nat;
 		results : [Principal];
-		callbacks : [Callback_5];
+		callbacks : [Callback_6];
 	};
 	public type ProxySubsOfArg = {
 		previous : ?Blob;
 		proxy_owner : Principal;
-		main : ICRC1T.Account;
+		main : Account;
 		take : ?Nat;
 	};
 	public type ProxySubsOfRes = {
 		total : Nat;
 		results : [Blob];
-		callbacks : [Callback_4];
+		callbacks : [Callback_5];
 	};
 	public type SpenderSubsOfArg = {
 		previous : ?Blob;
 		spender_owner : Principal;
 		take : ?Nat;
-		proxy : ICRC1T.Account;
+		proxy : Account;
 	};
 	public type SpenderSubsOfRes = {
 		total : Nat;
 		results : [Blob];
-		callbacks : [Callback_3];
+		callbacks : [Callback_4];
 	};
 	public type SpendersOfArg = {
 		previous : ?Principal;
 		take : ?Nat;
-		proxy : ICRC1T.Account;
+		proxy : Account;
 	};
 	public type SpendersOfRes = {
 		total : Nat;
 		results : [Principal];
-		callbacks : [Callback_2];
+		callbacks : [Callback_3];
 	};
 	public type SubaccountsOfArg = {
 		previous : ?Blob;
@@ -180,20 +198,20 @@ module {
 		previous : ?Blob;
 		take : ?Nat;
 		main_owner : Principal;
-		proxy : ICRC1T.Account;
-		spender : ICRC1T.Account;
+		proxy : Account;
+		spender : Account;
 	};
 	public type SubmainsOfRes = {
 		total : Nat;
 		results : [Blob];
-		callbacks : [Callback_7];
+		callbacks : [Callback_8];
 	};
 	public type TokenApproval = { allowance : Nat; expires_at : Nat64 };
 	public type TokensOfArg = {
 		previous : ?Principal;
 		take : ?Nat;
-		proxy : ICRC1T.Account;
-		spender : ICRC1T.Account;
+		proxy : Account;
+		spender : Account;
 	};
 	public type TokensOfRes = {
 		total : Nat;
@@ -212,20 +230,20 @@ module {
 		#Duplicate : { of : Nat };
 		#CreatedInFuture : { time : Nat64 };
 		#InsufficientTokenAllowance : { allowance : Nat };
-		#UnknownPrice;
+		#UnknownPrice : { xdr_permyriad_per_icp : Nat };
 		#TooOld;
 		#TransferFailed : TransferFromError;
 		#InsufficientTokenBalance : { balance : Nat };
 	};
 	public type TopupRes = { #Ok : Nat; #Err : TopupErr };
 	public type TransferFrom1Arg = {
-		to : ICRC1T.Account;
+		to : Account;
 		token : Principal;
 		spender_subaccount : ?Blob;
-		main : ?ICRC1T.Account;
+		main : ?Account;
 		memo : ?Blob;
 		created_at : ?Nat64;
-		proxy : ICRC1T.Account;
+		proxy : Account;
 		amount : Nat;
 	};
 	public type TransferFrom1Err = {
@@ -237,23 +255,23 @@ module {
 		#CreatedInFuture : { time : Nat64 };
 		#InsufficientTokenAllowance : { allowance : Nat };
 		#UnknownProxy;
-		#NoPayableMain : {
-			maximum_allowance : { main : ?ICRC1T.Account; available : Nat };
+		#NoEligibleMain : {
+			maximum_allowance : { main : ?Account; available : Nat };
 			total_checked : Nat;
-			maximum_balance : { main : ?ICRC1T.Account; available : Nat };
+			maximum_balance : { main : ?Account; available : Nat };
 		};
 		#TooOld;
-		#NoUsableLinkAllowance : {
+		#NoSufficientLinkAllowance : {
 			total_active : Nat;
 			total_valid : Nat;
-			maximum : { main : ?ICRC1T.Account; available : Nat };
+			maximum : { main : ?Account; available : Nat };
 		};
 		#TransferFailed : TransferFromError;
 		#InsufficientTokenBalance : { balance : Nat };
 		#UnknownToken;
 	};
 	public type TransferFrom1Res = {
-		#Ok : { block_index : Nat; main : ICRC1T.Account };
+		#Ok : { block_index : Nat; main : Account };
 		#Err : TransferFrom1Err;
 	};
 	public type TransferFromError = {
