@@ -15,7 +15,7 @@ module {
 	public type Main = {
 		name : Text;
 		expires_at : Nat64;
-		spenders : Accounts<(expires_at : ?Nat64)>;
+		spenders : Accounts<(expires_at : Nat64)>;
 	};
 	public type User = RBTree.Type<(sub : Blob), Main>;
 	public type Proxy = RBTree.Type<(sub : Blob), (main_p : Principal, main_sub : Blob, expires_at : Nat64)>;
@@ -35,8 +35,6 @@ module {
 		#UnknownProxy;
 		#UnknownLengthTier;
 		#UnknownDurationPackage : { xdr_permyriad_per_icp : Nat };
-		#Locked;
-		#Unnamed;
 		#NameTooLong : { maximum_length : Nat };
 		#NamedAccount : { name : Text; expires_at : Nat64 };
 		#NameReserved : { by : ICRC1T.Account };
@@ -63,40 +61,38 @@ module {
 	public type TransferArg = {
 		proxy_subaccount : ?Blob; //
 		to : ICRC1T.Account; //
-		expiry_reduction : ?Nat64; // fee
+		time_toll : ?Nat64; // fee
 		memo : ?Blob; //
 	};
 	public type TransferErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#SenderIsProxy : { of : ICRC1T.Account };
-		#RecipientIsProxy : { of : ICRC1T.Account };
 		#LockedSender;
 		#UnnamedSender;
 		#LockedRecipient;
 		#NamedRecipient : { name : Text; expires_at : Nat64 };
-		#InsufficientDuration : { remaining : Nat64 };
-		#BadExpiryReduction : { expected_expiry_reduction : Nat64 };
+		#InsufficientTime : { remaining : Nat64 };
+		#BadTimeToll : { expected_time_toll : Nat64 };
 	};
 	public type TransferRes = Result.Type<Nat, TransferErr>;
 
 	public type ApproveArg = {
 		proxy_subaccount : ?Blob; //
 		spender : ICRC1T.Account; //
-		expires_at : ?Nat64; //
-		expiry_reduction : ?Nat64; // fee
+		expires_at : Nat64; //
+		time_toll : ?Nat64; // fee
 		memo : ?Blob; //
 		created_at : ?Nat64;
 	};
 	public type ApproveErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#SenderIsProxy : { of : ICRC1T.Account };
-		#Locked;
-		#Unnamed;
-		#InsufficientDuration : { remaining : Nat64 };
-		#BadExpiryReduction : { expected_expiry_reduction : Nat64 };
+		#LockedSender;
+		#UnnamedSender;
+		#InsufficientTime : { remaining : Nat64 };
+		#BadTimeToll : { expected_time_toll : Nat64 };
 		#Expired : { time : Nat64 };
+		#ExpiresTooLate : { maximum_expiry : Nat64 };
 		#CreatedInFuture : { time : Nat64 };
 		#TooOld;
 		#Duplicate : { of : Nat };
@@ -106,39 +102,36 @@ module {
 	public type RevokeArg = {
 		proxy_subaccount : ?Blob;
 		spender : ICRC1T.Account;
-		expiry_reduction : ?Nat64; // fee
+		time_toll : ?Nat64; // fee
 		memo : ?Blob;
 	};
 	public type RevokeErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#SenderIsProxy : { of : ICRC1T.Account };
-		#Locked;
-		#Unnamed;
-		#InsufficientDuration : { remaining : Nat64 };
-		#BadExpiryReduction : { expected_expiry_reduction : Nat64 };
+		#LockedSender;
+		#UnnamedSender;
+		#InsufficientTime : { remaining : Nat64 };
+		#BadTimeToll : { expected_time_toll : Nat64 };
 		#UnknownSpender;
 	};
 	public type RevokeRes = Result.Type<Nat, RevokeErr>;
 
 	public type TransferFromArg = {
-		spender_subaccount : ?Blob;
-		proxy : ICRC1T.Account;
-		to : ICRC1T.Account;
-		expiry_reduction : ?Nat64; // fee
-		memo : ?Blob;
+		spender_subaccount : ?Blob; //
+		proxy : ICRC1T.Account; //
+		to : ICRC1T.Account; //
+		time_toll : ?Nat64; // fee
+		memo : ?Blob; //
 	};
 	public type TransferFromErr = {
 		#GenericError : Error.Type;
 		#LockedSender;
 		#UnnamedSender;
 		#UnknownProxy;
-		#SenderIsProxy : { of : ICRC1T.Account };
-		#RecipientIsProxy : { of : ICRC1T.Account };
 		#LockedRecipient;
 		#NamedRecipient : { name : Text; expires_at : Nat64 };
-		#InsufficientDuration : { remaining : Nat64 };
-		#BadExpiryReduction : { expected_expiry_reduction : Nat64 };
+		#InsufficientTime : { remaining : Nat64 };
+		#BadTimeToll : { expected_time_toll : Nat64 };
 		#UnknownSpender;
 	};
 	public type TransferFromRes = Result.Type<Nat, TransferFromErr>;
