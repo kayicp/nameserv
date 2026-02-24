@@ -12,6 +12,7 @@ import Option "../util/motoko/Option";
 import OptionBase "mo:base/Option";
 import Text "mo:base/Text";
 import ICRC1T "../icrc1_canister/Types";
+import ICRC1L "../icrc1_canister/ICRC1";
 import Error "../util/motoko/Error";
 import Result "../util/motoko/Result";
 import Linker "linker";
@@ -28,33 +29,97 @@ module {
 	public func initMain() : T.Main = {
 		name = "";
 		expires_at = 0;
+		locked_until = 0;
 		spenders = RBTree.empty();
 	};
-	public func isMain(m : T.Main) : Bool = Text.size(m.name) > 0 or m.expires_at > 0 or RBTree.size(m.spenders) > 0;
-
-	// public func forceMain(r : T.Role) : T.Main = switch r {
-	//   case (#Main m) m;
-	//   case _ initMain();
-	// };
-	// public func saveRole(u : T.User, s : Blob, r : T.Role) : T.User = switch r {
-	//   case (#Main m) if (isMain(m)) RBTree.insert(u, Blob.compare, s, #Main m) else RBTree.delete(u, Blob.compare, s);
-	//   case (#Proxy(main_a, expiry)) if (expiry > 0) RBTree.insert(u, Blob.compare, s, #Proxy(main_a, expiry)) else RBTree.delete(u, Blob.compare, s);
-	// };
+	public func isMain(m : T.Main) : Bool = Text.size(m.name) > 0 or RBTree.size(m.spenders) > 0;
 
 	public func dedupeRegister((ap, a) : (Principal, T.RegisterArg), (bp, b) : (Principal, T.RegisterArg)) : Order.Order {
+		switch (Option.compare(a.created_at, b.created_at, Nat64.compare)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Text.compare(a.name, b.name)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Nat.compare(a.amount, b.amount)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Principal.compare(a.token, b.token)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Option.compare(a.memo, b.memo, Blob.compare)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (ICRC1L.compareAccount({ owner = ap; subaccount = a.proxy_subaccount }, { owner = bp; subaccount = b.proxy_subaccount })) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Option.compare(a.main, b.main, ICRC1L.compareAccount)) {
+			case (#equal) ();
+			case other return other;
+		};
 		#equal;
 	};
 
 	public func dedupeApprove((ap, a) : (Principal, T.ApproveArg), (bp, b) : (Principal, T.ApproveArg)) : Order.Order {
+		switch (Option.compare(a.created_at, b.created_at, Nat64.compare)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Nat64.compare(a.expires_at, b.expires_at)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Option.compare(a.time_toll, b.time_toll, Nat64.compare)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Option.compare(a.memo, b.memo, Blob.compare)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (ICRC1L.compareAccount(a.spender, b.spender)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (ICRC1L.compareAccount({ owner = ap; subaccount = a.proxy_subaccount }, { owner = bp; subaccount = b.proxy_subaccount })) {
+			case (#equal) ();
+			case other return other;
+		};
 		#equal;
 	};
 
 	public func compareProxyExpiry((at : Nat64, ap : Principal, as : Blob), (bt : Nat64, bp : Principal, bs : Blob)) : Order.Order {
-		#equal; // todo: finish me
+		switch (Nat64.compare(at, bt)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Principal.compare(ap, bp)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Blob.compare(as, bs)) {
+			case (#equal) ();
+			case other return other;
+		};
+		#equal;
 	};
 
 	public func compareNameExpiry((at : Nat64, an : Text), (bt : Nat64, bn : Text)) : Order.Order {
-		#equal; // todo: finish me
+		switch (Nat64.compare(at, bt)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Text.compare(an, bn)) {
+			case (#equal) ();
+			case other return other;
+		};
+		#equal;
 	};
 
 	public func compareManagerExpiry(
@@ -69,6 +134,114 @@ module {
 			(bspenderowner : Principal, bspendersub : Blob),
 		),
 	) : Order.Order {
-		#equal; // todo: finish me
+		switch (Nat64.compare(at, bt)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Principal.compare(afromowner, bfromowner)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Blob.compare(afromsub, bfromsub)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Principal.compare(aspenderowner, bspenderowner)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Blob.compare(aspendersub, bspendersub)) {
+			case (#equal) ();
+			case other return other;
+		};
+		#equal;
+	};
+
+	public func valueRegister(caller : Principal, arg : T.RegisterArg, pay_id : Nat, now : Nat64, phash : ?Blob) : Value.Type {
+		var tx = RBTree.empty<Text, Value.Type>();
+
+		var map = RBTree.empty<Text, Value.Type>();
+		map := Value.setNat(map, "xfer", ?pay_id);
+		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
+		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setMap(map, "tx", tx);
+		map := Value.setBlob(map, "phash", phash);
+		#Map(RBTree.array(map));
+	};
+
+	public func valueTransfer(caller : Principal, arg : T.TransferArg, now : Nat64, phash : ?Blob) : Value.Type {
+		var tx = RBTree.empty<Text, Value.Type>();
+
+		var map = RBTree.empty<Text, Value.Type>();
+		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
+		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setMap(map, "tx", tx);
+		map := Value.setBlob(map, "phash", phash);
+		#Map(RBTree.array(map));
+	};
+
+	public func valueApprove(caller : Principal, arg : T.ApproveArg, now : Nat64, phash : ?Blob) : Value.Type {
+		var tx = RBTree.empty<Text, Value.Type>();
+
+		var map = RBTree.empty<Text, Value.Type>();
+		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
+		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setMap(map, "tx", tx);
+		map := Value.setBlob(map, "phash", phash);
+		#Map(RBTree.array(map));
+	};
+
+	public func valueRevoke(caller : Principal, arg : T.RevokeArg, now : Nat64, phash : ?Blob) : Value.Type {
+		var tx = RBTree.empty<Text, Value.Type>();
+
+		var map = RBTree.empty<Text, Value.Type>();
+		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
+		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setMap(map, "tx", tx);
+		map := Value.setBlob(map, "phash", phash);
+		#Map(RBTree.array(map));
+	};
+
+	public func valueTransferFrom(caller : Principal, arg : T.TransferFromArg, now : Nat64, phash : ?Blob) : Value.Type {
+		var tx = RBTree.empty<Text, Value.Type>();
+
+		var map = RBTree.empty<Text, Value.Type>();
+		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
+		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setMap(map, "tx", tx);
+		map := Value.setBlob(map, "phash", phash);
+		#Map(RBTree.array(map));
+	};
+
+	public func validateName(t : Text) : Result.Type<(), Text> {
+		var is_first = true;
+		var last_underscore = false;
+
+		label checking for (c in t.chars()) {
+			for (x in T.CHARS.vals()) if (c == x) {
+				is_first := false;
+				last_underscore := false;
+				continue checking;
+			};
+			if (is_first) {
+				return #Err "First character must be small alphabets (a-z)";
+			};
+			for (x in T.NUMS.vals()) if (c == x) {
+				last_underscore := false;
+				continue checking;
+			};
+			if (c == '_') {
+				if (last_underscore) {
+					return #Err "Consecutive underscores are not allowed";
+				};
+				last_underscore := true;
+				continue checking;
+			};
+			return #Err "Only small alphabets (a-z), numbers (0-9), and underscores (_) are allowed";
+		};
+		if (last_underscore) {
+			return #Err "Name cannot end with an underscore";
+		};
+		#Ok;
 	};
 };

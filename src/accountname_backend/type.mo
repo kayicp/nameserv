@@ -7,6 +7,42 @@ import ICRC1T "../icrc1_canister/Types";
 import Linker "linker";
 
 module {
+	public let CHARS = (['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']);
+	public let NUMS = (['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+
+	public type PriceTier = {
+		length : { min : Nat; max : Nat };
+		tcycles_fee_multiplier : Nat;
+	};
+	public type DurationPackage = { years_base : Nat; months_bonus : Nat };
+	public type Environment = {
+		memo_size : { min : Nat; max : Nat };
+		duration : {
+			tx_window : Nat64;
+			permitted_drift : Nat64;
+		};
+		service_provider : Principal;
+		cmc : ?Text;
+		max_update_batch_size : Nat;
+		max_query_batch_size : Nat;
+		max_take_value : Nat;
+		name : {
+			price_tiers : [PriceTier];
+			duration : {
+				max_expiry : Nat64;
+				toll : Nat64;
+				lock : Nat64;
+				packages : [DurationPackage];
+			};
+		};
+		archive : {
+			max_update_batch_size : Nat;
+			root : ?Principal;
+			standby : ?Principal;
+			min_tcycles : Nat;
+		};
+	};
+
 	public type Xccount = { owner : Principal; sub : Blob };
 	public type Subs<T> = RBTree.Type<Blob, T>;
 	public type Accounts<T> = RBTree.Type<Principal, Subs<T>>;
@@ -15,6 +51,7 @@ module {
 	public type Main = {
 		name : Text;
 		expires_at : Nat64;
+		locked_until : Nat64;
 		spenders : Accounts<(expires_at : Nat64)>;
 	};
 	public type User = RBTree.Type<(sub : Blob), Main>;
@@ -22,10 +59,10 @@ module {
 
 	public type RegisterArg = {
 		proxy_subaccount : ?Blob; //
-		name : Text; // todo: validate
+		name : Text;
 		amount : Nat; // icp/tcycles
 		token : Principal;
-		payer : ?ICRC1T.Account; //
+		main : ?ICRC1T.Account; //
 		memo : ?Blob; //
 		created_at : ?Nat64; //
 	};
@@ -36,8 +73,9 @@ module {
 		#UnknownLengthTier;
 		#UnknownDurationPackage : { xdr_permyriad_per_icp : Nat };
 		#NameTooLong : { maximum_length : Nat };
-		#NamedAccount : { name : Text; expires_at : Nat64 };
+		#NamedAccount : Name;
 		#NameReserved : { by : ICRC1T.Account };
+		#Locked : { until : Nat64 };
 		#InsufficientLinkAllowance : { allowance : Nat };
 		#InsufficientLinkCredits;
 		#InsufficientTokenBalance : { balance : Nat };
@@ -67,9 +105,8 @@ module {
 	public type TransferErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#LockedSender;
+		#SenderLocked : { until : Nat64 };
 		#UnnamedSender;
-		#LockedRecipient;
 		#NamedRecipient : { name : Text; expires_at : Nat64 };
 		#InsufficientTime : { remaining : Nat64 };
 		#BadTimeToll : { expected_time_toll : Nat64 };
@@ -87,7 +124,7 @@ module {
 	public type ApproveErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#LockedSender;
+		#SenderLocked : { until : Nat64 };
 		#UnnamedSender;
 		#InsufficientTime : { remaining : Nat64 };
 		#BadTimeToll : { expected_time_toll : Nat64 };
@@ -108,7 +145,7 @@ module {
 	public type RevokeErr = {
 		#GenericError : Error.Type;
 		#UnknownProxy;
-		#LockedSender;
+		#SenderLocked : { until : Nat64 };
 		#UnnamedSender;
 		#InsufficientTime : { remaining : Nat64 };
 		#BadTimeToll : { expected_time_toll : Nat64 };
@@ -125,10 +162,9 @@ module {
 	};
 	public type TransferFromErr = {
 		#GenericError : Error.Type;
-		#LockedSender;
+		#SenderLocked : { until : Nat64 };
 		#UnnamedSender;
 		#UnknownProxy;
-		#LockedRecipient;
 		#NamedRecipient : { name : Text; expires_at : Nat64 };
 		#InsufficientTime : { remaining : Nat64 };
 		#BadTimeToll : { expected_time_toll : Nat64 };
