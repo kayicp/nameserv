@@ -90,7 +90,7 @@ shared (install) persistent actor class Canister(
   var users = RBTree.empty<Principal, T.User>();
   var proxies = RBTree.empty<Principal, T.Proxy>();
   var proxy_expiries = RBTree.empty<(Nat64, Principal, Blob), ()>();
-  var spender_expiries = RBTree.empty<(Nat64, from : (Principal, Blob), spender : (Principal, Blob)), ()>();
+  var operator_expiries = RBTree.empty<(Nat64, from : (Principal, Blob), operator : (Principal, Blob)), ()>();
 
   var names = RBTree.empty<Text, (Principal, Blob)>();
   var name_expiries = RBTree.empty<(Nat64, Text), ()>();
@@ -105,17 +105,17 @@ shared (install) persistent actor class Canister(
   //   Buffer.toArray(buf);
   // };
 
-  // public shared query func iiname_spenders_of(main_a : ICRC1T.Account, prev : ?Principal, take : ?Nat) : async [Principal] {
+  // public shared query func iiname_operators_of(main_a : ICRC1T.Account, prev : ?Principal, take : ?Nat) : async [Principal] {
   //   let max_take = Nat.min(Option.get(take, env.max_take_value), env.max_take_value);
   //   let main = L.forceMain(L.getRole(getUser(main_a.owner), Subaccount.get(main_a.subaccount)));
-  //   RBTree.pageKey(main.spenders, Principal.compare, prev, max_take);
+  //   RBTree.pageKey(main.operators, Principal.compare, prev, max_take);
   // };
 
-  // public shared query func iiname_spender_subaccounts_of(main_a : ICRC1T.Account, spender_p : Principal, prev : ?Blob, take : ?Nat) : async [Blob] {
+  // public shared query func iiname_operator_subaccounts_of(main_a : ICRC1T.Account, operator_p : Principal, prev : ?Blob, take : ?Nat) : async [Blob] {
   //   let max_take = Nat.min(Option.get(take, env.max_take_value), env.max_take_value);
   //   let main = L.forceMain(L.getRole(getUser(main_a.owner), Subaccount.get(main_a.subaccount)));
   //   let buf = Buffer.Buffer<Blob>(max_take);
-  //   RBTree.void(L.getOwner(main.spenders, spender_p), Blob.compare, prev, max_take, func(k, v) = buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k));
+  //   RBTree.void(L.getOwner(main.operators, operator_p), Blob.compare, prev, max_take, func(k, v) = buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k));
   //   Buffer.toArray(buf);
   // };
 
@@ -134,8 +134,8 @@ shared (install) persistent actor class Canister(
   //   let buff = Buffer.Buffer<?(expires_at : ?Nat64)>(max_take);
   //   label finding for (arg in args.vals()) {
   //     let main = L.forceMain(L.getRole(getUser(arg.account.owner), Subaccount.get(arg.account.subaccount)));
-  //     let spender = L.getOwner(main.spenders, arg.spender.owner);
-  //     buff.add(RBTree.get(spender, Blob.compare, Subaccount.get(arg.spender.subaccount)));
+  //     let operator = L.getOwner(main.operators, arg.operator.owner);
+  //     buff.add(RBTree.get(operator, Blob.compare, Subaccount.get(arg.operator.subaccount)));
   //   };
   //   Buffer.toArray(buff);
   // };
@@ -230,7 +230,7 @@ shared (install) persistent actor class Canister(
     let (token_can, token_fee) = if (is_icp) (icp_token, icp_fee) else (tcycles_token, tcycles_fee);
     let xfer_and_fee = arg.amount + token_fee;
     let linker = actor (Linker.ID) : Linker.Canister;
-    let (main_a, main_sub) = switch (arg.payer) {
+    let (main_a, main_sub) = switch (arg.main) {
       case (?main_a) {
         let links_call = linker.accl_icrc1_allowances([{
           arg with main = main_a;
@@ -462,7 +462,7 @@ shared (install) persistent actor class Canister(
     let arg = args[0];
     let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
     if (not ICRC1L.validateAccount(proxy_a)) return [Error.text("Caller account is invalid")];
-    if (not ICRC1L.validateAccount(arg.spender)) return [Error.text("Spender account is invalid")];
+    if (not ICRC1L.validateAccount(arg.operator)) return [Error.text("Operator account is invalid")];
 
     switch (checkMemo(arg.memo)) {
       case (#Err err) return [#Err err];
@@ -479,9 +479,9 @@ shared (install) persistent actor class Canister(
       case _ return [#Err(#UnknownProxy)];
     };
     var from_u = L.getPrincipal(users, from_p, RBTree.empty());
-    let spender_sub = Subaccount.get(arg.spender.subaccount);
-    if (from_p == arg.spender.owner and from_sub == spender_sub) return [Error.text("Self-approve is not allowed")];
-    if (proxy_a.owner == arg.spender.owner and proxy_sub == spender_sub) return [Error.text("Proxy cannot be a spender")];
+    let operator_sub = Subaccount.get(arg.operator.subaccount);
+    if (from_p == arg.operator.owner and from_sub == operator_sub) return [Error.text("Self-approve is not allowed")];
+    if (proxy_a.owner == arg.operator.owner and proxy_sub == operator_sub) return [Error.text("Proxy cannot be a operator")];
 
     var from_main = L.getBlob(from_u, from_sub, L.initMain());
     if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
@@ -497,11 +497,11 @@ shared (install) persistent actor class Canister(
       case (#Err err) return [#Err err];
       case _ ();
     };
-    var from_spender = L.getPrincipal(from_main.spenders, arg.spender.owner, RBTree.empty());
-    let old_spender_expiry = L.getBlob(from_spender, spender_sub, 0 : Nat64);
-    from_spender := RBTree.insert(from_spender, Blob.compare, spender_sub, arg.expires_at);
-    let spenders = L.savePrincipal(from_main.spenders, arg.spender.owner, from_spender, true);
-    from_main := { from_main with spenders };
+    var from_operator = L.getPrincipal(from_main.operators, arg.operator.owner, RBTree.empty());
+    let old_operator_expiry = L.getBlob(from_operator, operator_sub, 0 : Nat64);
+    from_operator := RBTree.insert(from_operator, Blob.compare, operator_sub, arg.expires_at);
+    let operators = L.savePrincipal(from_main.operators, arg.operator.owner, from_operator, true);
+    from_main := { from_main with operators };
 
     let old_name_expiry = from_main.expires_at;
     let new_name_expiry = from_main.expires_at - env.name.duration.toll;
@@ -509,8 +509,8 @@ shared (install) persistent actor class Canister(
     from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
     users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
 
-    spender_expiries := RBTree.delete(spender_expiries, L.compareManagerExpiry, (old_spender_expiry, (from_p, from_sub), (arg.spender.owner, spender_sub)));
-    spender_expiries := RBTree.insert(spender_expiries, L.compareManagerExpiry, (arg.expires_at, (from_p, from_sub), (arg.spender.owner, spender_sub)), ());
+    operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (old_operator_expiry, (from_p, from_sub), (arg.operator.owner, operator_sub)));
+    operator_expiries := RBTree.insert(operator_expiries, L.compareManagerExpiry, (arg.expires_at, (from_p, from_sub), (arg.operator.owner, operator_sub)), ());
 
     name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (old_name_expiry, from_main.name));
     name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (new_name_expiry, from_main.name), ());
@@ -529,7 +529,7 @@ shared (install) persistent actor class Canister(
     let arg = args[0];
     let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
     if (not ICRC1L.validateAccount(proxy_a)) return [Error.text("Caller account is invalid")];
-    if (not ICRC1L.validateAccount(arg.spender)) return [Error.text("Manager account is invalid")];
+    if (not ICRC1L.validateAccount(arg.operator)) return [Error.text("Manager account is invalid")];
 
     switch (checkMemo(arg.memo)) {
       case (#Err err) return [#Err err];
@@ -552,22 +552,22 @@ shared (install) persistent actor class Canister(
     let remaining = from_main.expires_at - now;
     if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
 
-    var from_spender = L.getPrincipal(from_main.spenders, arg.spender.owner, RBTree.empty());
-    let spender_sub = Subaccount.get(arg.spender.subaccount);
-    let old_spender_expiry = switch (RBTree.get(from_spender, Blob.compare, spender_sub)) {
+    var from_operator = L.getPrincipal(from_main.operators, arg.operator.owner, RBTree.empty());
+    let operator_sub = Subaccount.get(arg.operator.subaccount);
+    let old_operator_expiry = switch (RBTree.get(from_operator, Blob.compare, operator_sub)) {
       case (?found) found;
-      case _ return [#Err(#UnknownSpender)];
+      case _ return [#Err(#UnknownOperator)];
     };
-    from_spender := RBTree.delete(from_spender, Blob.compare, spender_sub);
-    let spenders = L.savePrincipal(from_main.spenders, arg.spender.owner, from_spender, true);
-    from_main := { from_main with spenders };
+    from_operator := RBTree.delete(from_operator, Blob.compare, operator_sub);
+    let operators = L.savePrincipal(from_main.operators, arg.operator.owner, from_operator, true);
+    from_main := { from_main with operators };
 
     let old_name_expiry = from_main.expires_at;
     let new_name_expiry = from_main.expires_at - env.name.duration.toll;
     from_main := { from_main with expires_at = new_name_expiry };
     from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
     users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
-    spender_expiries := RBTree.delete(spender_expiries, L.compareManagerExpiry, (old_spender_expiry, (from_p, from_sub), (arg.spender.owner, spender_sub)));
+    operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (old_operator_expiry, (from_p, from_sub), (arg.operator.owner, operator_sub)));
 
     name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (old_name_expiry, from_main.name));
     name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (new_name_expiry, from_main.name), ());
@@ -583,14 +583,14 @@ shared (install) persistent actor class Canister(
     let now = syncTrim();
     if (args.size() == 0) return [];
     let arg = args[0];
-    let spender_a = { owner = caller; subaccount = arg.spender_subaccount };
-    if (not ICRC1L.validateAccount(spender_a)) return [Error.text("Caller account is invalid")];
+    let operator_a = { owner = caller; subaccount = arg.operator_subaccount };
+    if (not ICRC1L.validateAccount(operator_a)) return [Error.text("Caller account is invalid")];
     if (not ICRC1L.validateAccount(arg.proxy)) return [Error.text("Proxy account is invalid")];
     if (not ICRC1L.validateAccount(arg.to)) return [Error.text("Recipient account is invalid")];
 
-    let spender_sub = Subaccount.get(spender_a.subaccount);
+    let operator_sub = Subaccount.get(operator_a.subaccount);
     let proxy_sub = Subaccount.get(arg.proxy.subaccount);
-    if (arg.proxy.owner == spender_a.owner and proxy_sub == spender_sub) return [Error.text("Caller cannot spend")];
+    if (arg.proxy.owner == operator_a.owner and proxy_sub == operator_sub) return [Error.text("Caller cannot spend")];
     let to_sub = Subaccount.get(arg.to.subaccount);
     if (arg.proxy.owner == arg.to.owner and proxy_sub == to_sub) return [Error.text("Proxy cannot receive")];
 
@@ -607,7 +607,7 @@ shared (install) persistent actor class Canister(
       case (?found) found;
       case _ return [#Err(#UnknownProxy)];
     };
-    if (from_p == spender_a.owner and from_sub == spender_sub) return [Error.text("Sender cannot spend")];
+    if (from_p == operator_a.owner and from_sub == operator_sub) return [Error.text("Sender cannot spend")];
     if (from_p == arg.to.owner and from_sub == to_sub) return [Error.text("Self-transfer is not allowed")];
 
     var from_u = L.getPrincipal(users, from_p, RBTree.empty());
@@ -617,9 +617,9 @@ shared (install) persistent actor class Canister(
     let remaining = from_main.expires_at - now;
     if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
 
-    var from_spender = L.getPrincipal(from_main.spenders, spender_a.owner, RBTree.empty());
-    let approval_expiry = L.getBlob(from_spender, spender_sub, 0 : Nat64);
-    if (approval_expiry < now) return [#Err(#UnknownSpender)];
+    var from_operator = L.getPrincipal(from_main.operators, operator_a.owner, RBTree.empty());
+    let approval_expiry = L.getBlob(from_operator, operator_sub, 0 : Nat64);
+    if (approval_expiry < now) return [#Err(#UnknownOperator)];
 
     var to_u = L.getPrincipal(users, arg.to.owner, RBTree.empty());
     var to_main = L.getBlob(to_u, to_sub, L.initMain());
@@ -639,13 +639,13 @@ shared (install) persistent actor class Canister(
     from_u := L.getPrincipal(users, from_p, RBTree.empty());
     from_main := L.getBlob(from_u, from_sub, from_main);
     from_main := { from_main with name = ""; expires_at = 0 };
-    from_spender := L.saveBlob(from_spender, spender_sub, 0 : Nat64, false);
-    let spenders = L.savePrincipal(from_main.spenders, spender_a.owner, from_spender, RBTree.size(from_spender) > 0);
-    from_main := { from_main with spenders };
+    from_operator := L.saveBlob(from_operator, operator_sub, 0 : Nat64, false);
+    let operators = L.savePrincipal(from_main.operators, operator_a.owner, from_operator, RBTree.size(from_operator) > 0);
+    from_main := { from_main with operators };
     from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
     users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
 
-    spender_expiries := RBTree.delete(spender_expiries, L.compareManagerExpiry, (approval_expiry, (from_p, from_sub), (spender_a.owner, spender_sub)));
+    operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (approval_expiry, (from_p, from_sub), (operator_a.owner, operator_sub)));
 
     let (block_id, phash) = ArchiveL.getPhash(blocks);
     // newBlock(block_id, L.valueDeposit(caller, sub, arg, depo_id, now, phash)); // todo: all value*() must store proxy and main?

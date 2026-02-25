@@ -52,7 +52,7 @@ module {
 		name : Text;
 		expires_at : Nat64;
 		locked_until : Nat64;
-		spenders : Accounts<(expires_at : Nat64)>;
+		operators : Accounts<(expires_at : Nat64)>;
 	};
 	public type User = RBTree.Type<(sub : Blob), Main>;
 	public type Proxy = RBTree.Type<(sub : Blob), (main_p : Principal, main_sub : Blob, expires_at : Nat64)>;
@@ -115,7 +115,7 @@ module {
 
 	public type ApproveArg = {
 		proxy_subaccount : ?Blob; //
-		spender : ICRC1T.Account; //
+		operator : ICRC1T.Account; //
 		expires_at : Nat64; //
 		time_toll : ?Nat64; // fee
 		memo : ?Blob; //
@@ -138,7 +138,7 @@ module {
 
 	public type RevokeArg = {
 		proxy_subaccount : ?Blob;
-		spender : ICRC1T.Account;
+		operator : ICRC1T.Account;
 		time_toll : ?Nat64; // fee
 		memo : ?Blob;
 	};
@@ -149,12 +149,12 @@ module {
 		#UnnamedSender;
 		#InsufficientTime : { remaining : Nat64 };
 		#BadTimeToll : { expected_time_toll : Nat64 };
-		#UnknownSpender;
+		#UnknownOperator;
 	};
 	public type RevokeRes = Result.Type<Nat, RevokeErr>;
 
 	public type TransferFromArg = {
-		spender_subaccount : ?Blob; //
+		operator_subaccount : ?Blob; //
 		proxy : ICRC1T.Account; //
 		to : ICRC1T.Account; //
 		time_toll : ?Nat64; // fee
@@ -168,7 +168,7 @@ module {
 		#NamedRecipient : { name : Text; expires_at : Nat64 };
 		#InsufficientTime : { remaining : Nat64 };
 		#BadTimeToll : { expected_time_toll : Nat64 };
-		#UnknownSpender;
+		#UnknownOperator;
 	};
 	public type TransferFromRes = Result.Type<Nat, TransferFromErr>;
 

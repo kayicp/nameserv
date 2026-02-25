@@ -30,9 +30,9 @@ module {
 		name = "";
 		expires_at = 0;
 		locked_until = 0;
-		spenders = RBTree.empty();
+		operators = RBTree.empty();
 	};
-	public func isMain(m : T.Main) : Bool = Text.size(m.name) > 0 or RBTree.size(m.spenders) > 0;
+	public func isMain(m : T.Main) : Bool = Text.size(m.name) > 0 or RBTree.size(m.operators) > 0;
 
 	public func dedupeRegister((ap, a) : (Principal, T.RegisterArg), (bp, b) : (Principal, T.RegisterArg)) : Order.Order {
 		switch (Option.compare(a.created_at, b.created_at, Nat64.compare)) {
@@ -83,7 +83,7 @@ module {
 			case (#equal) ();
 			case other return other;
 		};
-		switch (ICRC1L.compareAccount(a.spender, b.spender)) {
+		switch (ICRC1L.compareAccount(a.operator, b.operator)) {
 			case (#equal) ();
 			case other return other;
 		};
@@ -126,12 +126,12 @@ module {
 		(
 			at : Nat64,
 			(afromowner : Principal, afromsub : Blob),
-			(aspenderowner : Principal, aspendersub : Blob),
+			(aoperatorowner : Principal, aoperatorsub : Blob),
 		),
 		(
 			bt : Nat64,
 			(bfromowner : Principal, bfromsub : Blob),
-			(bspenderowner : Principal, bspendersub : Blob),
+			(boperatorowner : Principal, boperatorsub : Blob),
 		),
 	) : Order.Order {
 		switch (Nat64.compare(at, bt)) {
@@ -146,68 +146,102 @@ module {
 			case (#equal) ();
 			case other return other;
 		};
-		switch (Principal.compare(aspenderowner, bspenderowner)) {
+		switch (Principal.compare(aoperatorowner, boperatorowner)) {
 			case (#equal) ();
 			case other return other;
 		};
-		switch (Blob.compare(aspendersub, bspendersub)) {
+		switch (Blob.compare(aoperatorsub, boperatorsub)) {
 			case (#equal) ();
 			case other return other;
 		};
 		#equal;
 	};
 
-	public func valueRegister(caller : Principal, arg : T.RegisterArg, pay_id : Nat, now : Nat64, phash : ?Blob) : Value.Type {
+	public func valueRegister(caller : Principal, arg : T.RegisterArg, main : ICRC1T.Account, expires_at : Nat64, pay_id : Nat, now : Nat64, phash : ?Blob) : Value.Type {
 		var tx = RBTree.empty<Text, Value.Type>();
-
+		tx := Value.setAccountP(tx, "proxy", ?{ owner = caller; subaccount = arg.proxy_subaccount });
+		tx := Value.setText(tx, "name", ?arg.name);
+		tx := Value.setNat(tx, "amt", ?arg.amount);
+		tx := Value.setPrincipal(tx, "token", ?arg.token);
+		tx := Value.setBlob(tx, "memo", arg.memo);
+		switch (arg.created_at) {
+			case (?t) tx := Value.setNat(tx, "ts", ?Nat64.toNat(t));
+			case _ ();
+		};
 		var map = RBTree.empty<Text, Value.Type>();
+		if (arg.main == null) map := Value.setAccountP(map, "main", ?main) else tx := Value.setAccountP(tx, "main", ?main);
+		map := Value.setNat(map, "expires_at", ?Nat64.toNat(expires_at));
 		map := Value.setNat(map, "xfer", ?pay_id);
 		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
-		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setText(map, "op", ?"register");
 		map := Value.setMap(map, "tx", tx);
 		map := Value.setBlob(map, "phash", phash);
 		#Map(RBTree.array(map));
 	};
 
-	public func valueTransfer(caller : Principal, arg : T.TransferArg, now : Nat64, phash : ?Blob) : Value.Type {
+	public func valueTransfer(caller : Principal, arg : T.TransferArg, main : ICRC1T.Account, time_toll : Nat, now : Nat64, phash : ?Blob) : Value.Type {
 		var tx = RBTree.empty<Text, Value.Type>();
-
+		tx := Value.setAccountP(tx, "proxy", ?{ owner = caller; subaccount = arg.proxy_subaccount });
+		tx := Value.setAccountP(tx, "to", ?arg.to);
+		tx := Value.setBlob(tx, "memo", arg.memo);
 		var map = RBTree.empty<Text, Value.Type>();
+		if (arg.time_toll == null) map := Value.setNat(map, "time_toll", ?time_toll) else tx := Value.setNat(tx, "time_toll", ?time_toll);
+		map := Value.setAccountP(map, "from", ?main);
 		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
-		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setText(map, "op", ?"transfer");
 		map := Value.setMap(map, "tx", tx);
 		map := Value.setBlob(map, "phash", phash);
 		#Map(RBTree.array(map));
 	};
 
-	public func valueApprove(caller : Principal, arg : T.ApproveArg, now : Nat64, phash : ?Blob) : Value.Type {
+	public func valueApprove(caller : Principal, arg : T.ApproveArg, main : ICRC1T.Account, time_toll : Nat, now : Nat64, phash : ?Blob) : Value.Type {
 		var tx = RBTree.empty<Text, Value.Type>();
-
+		tx := Value.setAccountP(tx, "proxy", ?{ owner = caller; subaccount = arg.proxy_subaccount });
+		tx := Value.setAccountP(tx, "operator", ?arg.operator);
+		tx := Value.setNat(tx, "expires_at", ?Nat64.toNat(arg.expires_at));
+		tx := Value.setBlob(tx, "memo", arg.memo);
+		switch (arg.created_at) {
+			case (?t) tx := Value.setNat(tx, "ts", ?Nat64.toNat(t));
+			case _ ();
+		};
 		var map = RBTree.empty<Text, Value.Type>();
+		if (arg.time_toll == null) map := Value.setNat(map, "time_toll", ?time_toll) else tx := Value.setNat(tx, "time_toll", ?time_toll);
+		map := Value.setAccountP(map, "from", ?main);
 		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
-		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setText(map, "op", ?"approve");
 		map := Value.setMap(map, "tx", tx);
 		map := Value.setBlob(map, "phash", phash);
 		#Map(RBTree.array(map));
 	};
 
-	public func valueRevoke(caller : Principal, arg : T.RevokeArg, now : Nat64, phash : ?Blob) : Value.Type {
+	public func valueRevoke(caller : Principal, arg : T.RevokeArg, main : ICRC1T.Account, time_toll : Nat, now : Nat64, phash : ?Blob) : Value.Type {
 		var tx = RBTree.empty<Text, Value.Type>();
+		tx := Value.setAccountP(tx, "proxy", ?{ owner = caller; subaccount = arg.proxy_subaccount });
+		tx := Value.setAccountP(tx, "operator", ?arg.operator);
+		tx := Value.setBlob(tx, "memo", arg.memo);
 
 		var map = RBTree.empty<Text, Value.Type>();
+		if (arg.time_toll == null) map := Value.setNat(map, "time_toll", ?time_toll) else tx := Value.setNat(tx, "time_toll", ?time_toll);
+		map := Value.setAccountP(map, "from", ?main);
 		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
-		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setText(map, "op", ?"revoke");
 		map := Value.setMap(map, "tx", tx);
 		map := Value.setBlob(map, "phash", phash);
 		#Map(RBTree.array(map));
 	};
 
-	public func valueTransferFrom(caller : Principal, arg : T.TransferFromArg, now : Nat64, phash : ?Blob) : Value.Type {
+	public func valueTransferFrom(caller : Principal, arg : T.TransferFromArg, main : ICRC1T.Account, time_toll : Nat, now : Nat64, phash : ?Blob) : Value.Type {
 		var tx = RBTree.empty<Text, Value.Type>();
+		tx := Value.setAccountP(tx, "operator", ?{ owner = caller; subaccount = arg.operator_subaccount });
+		tx := Value.setAccountP(tx, "proxy", ?arg.proxy);
+		tx := Value.setAccountP(tx, "to", ?arg.to);
+		tx := Value.setBlob(tx, "memo", arg.memo);
 
 		var map = RBTree.empty<Text, Value.Type>();
+		if (arg.time_toll == null) map := Value.setNat(map, "time_toll", ?time_toll) else tx := Value.setNat(tx, "time_toll", ?time_toll);
+		map := Value.setAccountP(map, "from", ?main);
 		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
-		map := Value.setText(map, "op", ?"add_credits");
+		map := Value.setText(map, "op", ?"transfer_from");
 		map := Value.setMap(map, "tx", tx);
 		map := Value.setBlob(map, "phash", phash);
 		#Map(RBTree.array(map));
