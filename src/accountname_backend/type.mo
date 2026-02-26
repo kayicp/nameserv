@@ -177,4 +177,51 @@ module {
 		#Approve : ApproveArg;
 	};
 
+	public type Callback<Args, Func> = { args : Args; query_func : Func };
+	public type BatchQuery<Args, Func, Res> = {
+		results : [Res]; // results of the call
+		total : Nat; // total in the called canister, not in results (because client can results.length) or any other canisters (because it's unknown to the current called canister)
+		callbacks : [Callback<Args, Func>];
+	};
+
+	public type SubaccountsOfArg = {
+		main_owner : Principal;
+		previous : ?Blob;
+		take : ?Nat;
+	};
+	public type SubaccountsOfRes = BatchQuery<SubaccountsOfArg, shared query SubaccountsOfArg -> async SubaccountsOfRes, Blob>;
+
+	public type NamesOfRes = BatchQuery<[ICRC1T.Account], shared query [ICRC1T.Account] -> async NamesOfRes, Name>;
+
+	public type OperatorsOfArg = {
+		main : ICRC1T.Account;
+		previous : ?Principal;
+		take : ?Nat;
+	};
+	public type OperatorsOfRes = BatchQuery<OperatorsOfArg, shared query OperatorsOfArg -> async OperatorsOfRes, Principal>;
+
+	public type OperatorSubsOfArg = {
+		main : ICRC1T.Account;
+		operator_owner : Principal;
+		previous : ?Blob;
+		take : ?Nat;
+	};
+	public type OperatorSubsOfRes = BatchQuery<OperatorSubsOfArg, shared query OperatorSubsOfArg -> async OperatorSubsOfRes, Blob>;
+
+	public type ApprovalOfArg = {
+		main : ICRC1T.Account;
+		operator : ICRC1T.Account;
+	};
+	public type ApprovalsOfRes = BatchQuery<ApprovalOfArg, shared query ApprovalOfArg -> async ApprovalsOfRes, Nat64>;
+
+	public type ProxySubsOfArg = {
+		proxy_owner : Principal;
+		previous : ?Blob;
+		take : ?Nat;
+	};
+	public type ProxySubsOfRes = BatchQuery<ProxySubsOfArg, shared query ProxySubsOfArg -> async ProxySubsOfRes, Blob>;
+
+	public type MainsOfRes = BatchQuery<[ICRC1T.Account], shared query [ICRC1T.Account] -> async MainsOfRes, ?ICRC1T.Account>;
+
+	public type AccountsOfRes = BatchQuery<[Text], shared query [Text] -> async AccountsOfRes, ?ICRC1T.Account>;
 };

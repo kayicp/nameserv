@@ -36,7 +36,7 @@ module {
 		#Expired : { time : Nat64 };
 		#ProxyReserved : { by : Account };
 	};
-	public type Approve1Res = { #Ok : Nat; #Err : Approve1Err };
+	public type Approve1Res = { #Ok : { block_index : Nat }; #Err : Approve1Err };
 	public type Callback = {
 		args : SubaccountsOfArg;
 		query_func : shared query SubaccountsOfArg -> async SubaccountsOfRes;
@@ -82,27 +82,27 @@ module {
 		query_func : shared query [Allowance1Arg] -> async AllowancesOfRes;
 	};
 	public type Canister = actor {
-		accl_credit_packages : shared query () -> async [CreditPackage];
-		accl_credits : shared query [Account] -> async CreditsOfRes;
-		accl_icrc1_allowances : shared query [
+		iilink_add_credits : shared TopupArg -> async TopupRes;
+		iilink_credit_packages : shared query () -> async [CreditPackage];
+		iilink_credits : shared query [Account] -> async CreditsOfRes;
+		iilink_icrc1_allowances : shared query [
 			Allowance1Arg
 		] -> async AllowancesOfRes;
-		accl_icrc1_approve : shared [Approve1Arg] -> async [Approve1Res];
-		accl_icrc1_main_subaccounts : shared query SubmainsOfArg -> async SubmainsOfRes;
-		accl_icrc1_mains : shared query MainsOfArg -> async MainsOfRes;
-		accl_icrc1_proxies : shared query ProxiesOfArg -> async ProxiesOfRes;
-		accl_icrc1_proxy_subaccounts : shared query ProxySubsOfArg -> async ProxySubsOfRes;
-		accl_icrc1_spender_subaccounts : shared query SpenderSubsOfArg -> async SpenderSubsOfRes;
-		accl_icrc1_spenders : shared query SpendersOfArg -> async SpendersOfRes;
-		accl_icrc1_sufficient_allowances : shared query Filter1Arg -> async Filter1Res;
-		accl_icrc1_tokens : shared query TokensOfArg -> async TokensOfRes;
-		accl_icrc1_transfer_from : shared TransferFrom1Arg -> async TransferFrom1Res;
-		accl_mint_credits : shared TopupArg -> async TopupRes;
-		accl_service_provider : shared query () -> async Account;
-		accl_subaccounts : shared query SubaccountsOfArg -> async SubaccountsOfRes;
+		iilink_icrc1_approve : shared [Approve1Arg] -> async [Approve1Res];
+		iilink_icrc1_main_subaccounts : shared query SubmainsOfArg -> async SubmainsOfRes;
+		iilink_icrc1_mains : shared query MainsOfArg -> async MainsOfRes;
+		iilink_icrc1_proxies : shared query ProxiesOfArg -> async ProxiesOfRes;
+		iilink_icrc1_proxy_subaccounts : shared query ProxySubsOfArg -> async ProxySubsOfRes;
+		iilink_icrc1_spender_subaccounts : shared query SpenderSubsOfArg -> async SpenderSubsOfRes;
+		iilink_icrc1_spenders : shared query SpendersOfArg -> async SpendersOfRes;
+		iilink_icrc1_sufficient_allowances : shared query Filter1Arg -> async Filter1Res;
+		iilink_icrc1_tokens : shared query TokensOfArg -> async TokensOfRes;
+		iilink_icrc1_transfer_from : shared TransferFrom1Arg -> async TransferFrom1Res;
+		iilink_service_provider : shared query () -> async Account;
+		iilink_subaccounts : shared query SubaccountsOfArg -> async SubaccountsOfRes;
 	};
 	public type CreditPackage = {
-		credits : Nat;
+		base : Nat;
 		tcycles_fee_multiplier : Nat;
 		bonus : Nat;
 	};
@@ -239,7 +239,7 @@ module {
 		#TransferFailed : TransferFromError;
 		#InsufficientTokenBalance : { balance : Nat };
 	};
-	public type TopupRes = { #Ok : Nat; #Err : TopupErr };
+	public type TopupRes = { #Ok : { block_index : Nat }; #Err : TopupErr };
 	public type TransferFrom1Arg = {
 		to : Account;
 		token : Principal;

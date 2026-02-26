@@ -98,61 +98,6 @@ shared (install) persistent actor class Canister(
   var register_dedupes = RBTree.empty<(Principal, T.RegisterArg), Nat>();
   var approve_dedupes = RBTree.empty<(Principal, T.ApproveArg), Nat>();
 
-  // public shared query func iiname_main_subaccounts_of(owner : Principal, prev : ?Blob, take : ?Nat) : async [Blob] {
-  //   let max_take = Nat.min(Option.get(take, env.max_take_value), env.max_take_value);
-  //   let buf = Buffer.Buffer<Blob>(max_take);
-  //   RBTree.void(getUser(owner), Blob.compare, prev, max_take, func(k, v) = buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k));
-  //   Buffer.toArray(buf);
-  // };
-
-  // public shared query func iiname_operators_of(main_a : ICRC1T.Account, prev : ?Principal, take : ?Nat) : async [Principal] {
-  //   let max_take = Nat.min(Option.get(take, env.max_take_value), env.max_take_value);
-  //   let main = L.forceMain(L.getRole(getUser(main_a.owner), Subaccount.get(main_a.subaccount)));
-  //   RBTree.pageKey(main.operators, Principal.compare, prev, max_take);
-  // };
-
-  // public shared query func iiname_operator_subaccounts_of(main_a : ICRC1T.Account, operator_p : Principal, prev : ?Blob, take : ?Nat) : async [Blob] {
-  //   let max_take = Nat.min(Option.get(take, env.max_take_value), env.max_take_value);
-  //   let main = L.forceMain(L.getRole(getUser(main_a.owner), Subaccount.get(main_a.subaccount)));
-  //   let buf = Buffer.Buffer<Blob>(max_take);
-  //   RBTree.void(L.getOwner(main.operators, operator_p), Blob.compare, prev, max_take, func(k, v) = buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k));
-  //   Buffer.toArray(buf);
-  // };
-
-  // public shared query func iiname_names_of(accounts : [ICRC1T.Account]) : async [T.Name] {
-  //   let max_take = Nat.min(accounts.size(), env.max_query_batch_size);
-  //   let buff = Buffer.Buffer<T.Name>(max_take);
-  //   label finding for (acc in accounts.vals()) {
-  //     let role = L.getRole(getUser(acc.owner), Subaccount.get(acc.subaccount));
-  //     buff.add(L.forceMain(role));
-  //   };
-  //   Buffer.toArray(buff);
-  // };
-
-  // public shared query func iiname_allowances_of(args : [ICRC1T.AllowanceArg]) : async [?(expires_at : ?Nat64)] {
-  //   let max_take = Nat.min(args.size(), env.max_query_batch_size);
-  //   let buff = Buffer.Buffer<?(expires_at : ?Nat64)>(max_take);
-  //   label finding for (arg in args.vals()) {
-  //     let main = L.forceMain(L.getRole(getUser(arg.account.owner), Subaccount.get(arg.account.subaccount)));
-  //     let operator = L.getOwner(main.operators, arg.operator.owner);
-  //     buff.add(RBTree.get(operator, Blob.compare, Subaccount.get(arg.operator.subaccount)));
-  //   };
-  //   Buffer.toArray(buff);
-  // };
-
-  // public shared query func iiname_accounts_of(args : [Text]) : async [?ICRC1T.Account] {
-  //   let max_take = Nat.min(args.size(), env.max_query_batch_size);
-  //   let buff = Buffer.Buffer<?ICRC1T.Account>(max_take);
-  //   label finding for (arg in args.vals()) {
-  //     let acc = switch (RBTree.get(names, Text.compare, arg)) {
-  //       case (?(p, sub)) ?{ owner = p; subaccount = Subaccount.opt(sub) };
-  //       case _ null;
-  //     };
-  //     buff.add(acc);
-  //   };
-  //   Buffer.toArray(buff);
-  // };
-
   public shared query func iiname_service_provider() : async ICRC1T.Account = async ({
     owner = env.service_provider;
     subaccount = null;
@@ -232,7 +177,7 @@ shared (install) persistent actor class Canister(
     let linker = actor (Linker.ID) : Linker.Canister;
     let (main_a, main_sub) = switch (arg.main) {
       case (?main_a) {
-        let links_call = linker.accl_icrc1_allowances([{
+        let links_call = linker.iilink_icrc1_allowances([{
           arg with main = main_a;
           proxy = proxy_a;
           spender = self_a;
@@ -250,7 +195,7 @@ shared (install) persistent actor class Canister(
         (main_a, Subaccount.get(main_a.subaccount));
       };
       case _ {
-        let links = await linker.accl_icrc1_sufficient_allowances({
+        let links = await linker.iilink_icrc1_sufficient_allowances({
           arg with proxy = proxy_a;
           spender = self_a;
           allowance = xfer_and_fee;
@@ -362,7 +307,7 @@ shared (install) persistent actor class Canister(
       memo = null;
       created_at = null;
     };
-    let pay_res = try await linker.accl_icrc1_transfer_from(pay_arg) catch (e) return save(unlock(#Err(Error.convert(e))));
+    let pay_res = try await linker.iilink_icrc1_transfer_from(pay_arg) catch (e) return save(unlock(#Err(Error.convert(e))));
     let pay_id = switch (unlock(pay_res)) {
       case (#Ok ok) ok.block_index;
       case (#Err err) return save(#Err(#TransferFailed err));
@@ -389,7 +334,7 @@ shared (install) persistent actor class Canister(
 
     let (block_id, phash) = ArchiveL.getPhash(blocks);
     if (arg.created_at != null) register_dedupes := RBTree.insert(register_dedupes, L.dedupeRegister, (caller, arg), block_id);
-    // newBlock(block_id, L.valueDeposit(caller, sub, arg, depo_id, now, phash)); // todo: all value*() must store proxy and main?
+    newBlock(block_id, L.valueRegister(caller, arg, main_a, new_name_expiry, pay_id, now, if (is_icp) xdr_permyriad_per_icp else 0, phash));
 
     // ignore await* sendBlock();
     #Ok block_id;
@@ -450,7 +395,7 @@ shared (install) persistent actor class Canister(
     users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
 
     let (block_id, phash) = ArchiveL.getPhash(blocks);
-    // newBlock(block_id, L.valueDeposit(caller, sub, arg, depo_id, now, phash)); // todo: all value*() must store proxy and main?
+    newBlock(block_id, L.valueTransfer(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
 
     // ignore await* sendBlock();
     [#Ok block_id];
@@ -517,7 +462,7 @@ shared (install) persistent actor class Canister(
 
     let (block_id, phash) = ArchiveL.getPhash(blocks);
     if (arg.created_at != null) approve_dedupes := RBTree.insert(approve_dedupes, L.dedupeApprove, (caller, arg), block_id);
-    // newBlock(block_id, L.valueDeposit(caller, sub, arg, depo_id, now, phash)); // todo: all value*() must store proxy and main?
+    newBlock(block_id, L.valueApprove(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
 
     // ignore await* sendBlock();
     [#Ok block_id];
@@ -573,7 +518,7 @@ shared (install) persistent actor class Canister(
     name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (new_name_expiry, from_main.name), ());
 
     let (block_id, phash) = ArchiveL.getPhash(blocks);
-    // newBlock(block_id, L.valueDeposit(caller, sub, arg, depo_id, now, phash)); // todo: all value*() must store proxy and main?
+    newBlock(block_id, L.valueRevoke(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
 
     // ignore await* sendBlock();
     [#Ok block_id];
@@ -648,10 +593,140 @@ shared (install) persistent actor class Canister(
     operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (approval_expiry, (from_p, from_sub), (operator_a.owner, operator_sub)));
 
     let (block_id, phash) = ArchiveL.getPhash(blocks);
-    // newBlock(block_id, L.valueDeposit(caller, sub, arg, depo_id, now, phash)); // todo: all value*() must store proxy and main?
+    newBlock(block_id, L.valueTransferFrom(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
 
     // ignore await* sendBlock();
     [#Ok block_id];
+  };
+
+  public shared query func iiname_main_subaccounts(arg : T.SubaccountsOfArg) : async T.SubaccountsOfRes {
+    let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
+    let buf = Buffer.Buffer<Blob>(max_take);
+    let main_u = L.getPrincipal(users, arg.main_owner, RBTree.empty());
+    for ((k, v) in RBTree.range(main_u, Blob.compare, arg.previous, max_take)) buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k);
+    {
+      total = RBTree.size(main_u);
+      results = Buffer.toArray(buf);
+      callbacks = [];
+    };
+  };
+
+  public shared query func iiname_names(args : [ICRC1T.Account]) : async T.NamesOfRes {
+    let max_take = Nat.min(args.size(), env.max_query_batch_size);
+    let now = Time64.nanos();
+    let buff = Buffer.Buffer<T.Name>(max_take);
+    label finding for (arg in args.vals()) {
+      if (buff.size() >= max_take) break finding;
+      let main_u = L.getPrincipal(users, arg.owner, RBTree.empty());
+      let main_sub = Subaccount.get(arg.subaccount);
+      let main = L.getBlob(main_u, main_sub, L.initMain());
+      buff.add(main);
+    };
+    {
+      total = RBTree.size(users);
+      results = Buffer.toArray(buff);
+      callbacks = [];
+    };
+  };
+
+  public shared query func iiname_operators(arg : T.OperatorsOfArg) : async T.OperatorsOfRes {
+    let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
+    let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
+    let main_sub = Subaccount.get(arg.main.subaccount);
+    let main = L.getBlob(main_u, main_sub, L.initMain());
+    {
+      total = RBTree.size(main.operators);
+      results = RBTree.pageKey(main.operators, Principal.compare, arg.previous, max_take);
+      callbacks = [];
+    };
+  };
+
+  public shared query func iiname_operator_subaccounts(arg : T.OperatorSubsOfArg) : async T.OperatorSubsOfRes {
+    let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
+    let buf = Buffer.Buffer<Blob>(max_take);
+    let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
+    let main_sub = Subaccount.get(arg.main.subaccount);
+    let main = L.getBlob(main_u, main_sub, L.initMain());
+    let operator = L.getPrincipal(main.operators, arg.operator_owner, RBTree.empty());
+    for ((k, v) in RBTree.range(operator, Blob.compare, arg.previous, max_take)) buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k);
+    {
+      total = RBTree.size(operator);
+      results = Buffer.toArray(buf);
+      callbacks = [];
+    };
+  };
+
+  public shared query func iiname_approvals(args : [T.ApprovalOfArg]) : async T.ApprovalsOfRes {
+    let max_take = Nat.min(args.size(), env.max_query_batch_size);
+    let now = Time64.nanos();
+    let buff = Buffer.Buffer<Nat64>(max_take);
+    label finding for (arg in args.vals()) {
+      if (buff.size() >= max_take) break finding;
+      let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
+      let main_sub = Subaccount.get(arg.main.subaccount);
+      let main = L.getBlob(main_u, main_sub, L.initMain());
+      let operator = L.getPrincipal(main.operators, arg.operator.owner, RBTree.empty());
+      let operator_sub = Subaccount.get(arg.operator.subaccount);
+      let expires_at = L.getBlob(operator, operator_sub, 0: Nat64);
+      buff.add(expires_at);
+    };
+    {
+      total = RBTree.size(users);
+      results = Buffer.toArray(buff);
+      callbacks = [];
+    };
+  };
+
+  public shared query func iiname_proxy_subaccounts(arg : T.ProxySubsOfArg) : async T.ProxySubsOfRes {
+    let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
+    let buf = Buffer.Buffer<Blob>(max_take);
+    let proxy_ptr = L.getPrincipal(proxies, arg.proxy_owner, RBTree.empty());
+    for ((k, v) in RBTree.range(proxy_ptr, Blob.compare, arg.previous, max_take)) buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k);
+    {
+      total = RBTree.size(proxy_ptr);
+      results = Buffer.toArray(buf);
+      callbacks = [];
+    };
+  };
+
+  public shared query func iiname_mains(args : [ICRC1T.Account]) : async T.MainsOfRes {
+    let max_take = Nat.min(args.size(), env.max_query_batch_size);
+    let now = Time64.nanos();
+    let buff = Buffer.Buffer<?ICRC1T.Account>(max_take);
+    label finding for (arg in args.vals()) {
+      if (buff.size() >= max_take) break finding;
+      let proxy_ptr = L.getPrincipal(proxies, arg.owner, RBTree.empty());
+      let proxy_sub = Subaccount.get(arg.subaccount);
+      let main = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
+        case (?(owner, sub, expiry)) (?{ owner; subaccount = Subaccount.opt(sub)});
+        case _ null;
+      };
+      buff.add(main);
+    };
+    {
+      total = RBTree.size(proxies);
+      results = Buffer.toArray(buff);
+      callbacks = [];
+    };
+  };
+
+  public shared query func iiname_accounts(args : [Text]) : async T.AccountsOfRes {
+    let max_take = Nat.min(args.size(), env.max_query_batch_size);
+    let now = Time64.nanos();
+    let buff = Buffer.Buffer<?ICRC1T.Account>(max_take);
+    label finding for (arg in args.vals()) {
+      if (buff.size() >= max_take) break finding;
+      let acct = switch (RBTree.get(names, Text.compare, arg)) {
+        case (?(owner, sub))(?{ owner; subaccount = Subaccount.opt(sub)});
+        case _ null;
+      };
+      buff.add(acct);
+    };
+    {
+      total = RBTree.size(names);
+      results = Buffer.toArray(buff);
+      callbacks = [];
+    };
   };
 
   func newBlock(block_id : Nat, val : Value.Type) {
