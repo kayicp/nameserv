@@ -32,7 +32,7 @@ module {
 		locked_until = 0;
 		operators = RBTree.empty();
 	};
-	public func isMain(m : T.Main) : Bool = Text.size(m.name) > 0 or RBTree.size(m.operators) > 0;
+	public func isMain(m : T.Main) : Bool = m.name != "" or RBTree.size(m.operators) > 0;
 
 	public func dedupeRegister((ap, a) : (Principal, T.RegisterArg), (bp, b) : (Principal, T.RegisterArg)) : Order.Order {
 		switch (Option.compare(a.created_at, b.created_at, Nat64.compare)) {

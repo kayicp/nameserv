@@ -9,7 +9,7 @@ module {
 	};
 	public type AllowancesOfRes = {
 		total : Nat;
-		results : [TokenApproval];
+		results : [TokenApprovalQ];
 		callbacks : [Callback_9];
 	};
 	public type Approve1Arg = {
@@ -206,11 +206,7 @@ module {
 		results : [Blob];
 		callbacks : [Callback_8];
 	};
-	public type TokenApproval = {
-		nonce : ?Nat;
-		allowance : Nat;
-		expires_at : Nat64;
-	};
+	public type TokenApprovalQ = { allowance : Nat; expires_at : Nat64 };
 	public type TokensOfArg = {
 		previous : ?Principal;
 		take : ?Nat;

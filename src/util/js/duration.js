@@ -14,17 +14,17 @@ const days = [];
 for (let i = 0; i < 30; i++) {
 	days.push(i + 1);
 }
-const weeks = [];
-for (let i = 0; i < 52; i++) {
-  weeks.push(i + 1);
-};
+// const weeks = [];
+// for (let i = 0; i < 52; i++) {
+//   weeks.push(i + 1);
+// };
 
 export const duration = {
 	seconds,
 	minutes,
 	hours,
 	days,
-  weeks
+  // weeks
 }
 
 export function duration2nano(val, unit) {
@@ -33,7 +33,7 @@ export function duration2nano(val, unit) {
     minutes: 60n,
     hours: 3600n,
     days: 86400n,
-    weeks: 604800n,
+    // weeks: 604800n,
   };
 	const selected_secs = unitSecondsMap[unit] ?? 1n;
 	const val_seconds = BigInt(val) * selected_secs;
@@ -86,4 +86,38 @@ export function timeLeft(expires_at) {
     expiresDisplay: 'Expires: ' + expires_at_date.toLocaleDateString(),
     leftLabel: `${days} day${days === 1 ? '' : 's'} left`,
   };
+}
+
+export function timeAgo(date) {
+  const now = new Date();
+  const diffInSeconds = Math.floor((now - date) / 1000);
+
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+  if (diffInSeconds < 60) {
+    return rtf.format(-diffInSeconds, 'second');
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return rtf.format(-diffInMinutes, 'minute');
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return rtf.format(-diffInHours, 'hour');
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 30) {
+    return rtf.format(-diffInDays, 'day');
+  }
+
+  const diffInMonths = Math.floor(diffInDays / 30);
+  if (diffInMonths < 12) {
+    return rtf.format(-diffInMonths, 'month');
+  }
+
+  const diffInYears = Math.floor(diffInMonths / 12);
+  return rtf.format(-diffInYears, 'year');
 }

@@ -98,22 +98,22 @@ shared (install) persistent actor class Canister(
   var register_dedupes = RBTree.empty<(Principal, T.RegisterArg), Nat>();
   var approve_dedupes = RBTree.empty<(Principal, T.ApproveArg), Nat>();
 
-  public shared query func iiname_service_provider() : async ICRC1T.Account = async ({
+  public shared query func icrc_acct_ns__service_provider() : async ICRC1T.Account = async ({
     owner = env.service_provider;
     subaccount = null;
   });
 
-  public shared query func iiname_price_tiers() : async [{
+  public shared query func icrc_acct_ns__price_tiers() : async [{
     length : { min : Nat; max : Nat };
     tcycles_fee_multiplier : Nat;
   }] = async env.name.price_tiers;
 
-  public shared query func iiname_duration_packages() : async [{
+  public shared query func icrc_acct_ns__duration_packages() : async [{
     years_base : Nat;
     months_bonus : Nat;
   }] = async env.name.duration.packages;
 
-  public shared ({ caller }) func iiname_register(arg : T.RegisterArg) : async T.RegisterRes {
+  public shared ({ caller }) func icrc_acct_ns__proxy_register(arg : T.RegisterArg) : async T.RegisterRes {
     let now = syncTrim();
     let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
     if (not ICRC1L.validateAccount(proxy_a)) return Error.text("Caller account is invalid");
@@ -136,7 +136,7 @@ shared (install) persistent actor class Canister(
       case _ async ({
         certificate = "" : Blob;
         data = {
-          xdr_permyriad_per_icp = 10_000 : Nat64;
+          xdr_permyriad_per_icp = 16_746 : Nat64;
           timestamp_seconds = now / Time64.SECONDS(1);
         };
         hash_tree = "" : Blob;
@@ -340,7 +340,7 @@ shared (install) persistent actor class Canister(
     #Ok block_id;
   };
 
-  public shared ({ caller }) func iiname_transfer(args : [T.TransferArg]) : async [T.TransferRes] {
+  public shared ({ caller }) func icrc_acct_ns__proxy_transfer(args : [T.TransferArg]) : async [T.TransferRes] {
     let now = syncTrim();
     if (args.size() == 0) return [];
     let arg = args[0];
@@ -401,7 +401,7 @@ shared (install) persistent actor class Canister(
     [#Ok block_id];
   };
 
-  public shared ({ caller }) func iiname_approve(args : [T.ApproveArg]) : async [T.ApproveRes] {
+  public shared ({ caller }) func icrc_acct_ns__proxy_approve(args : [T.ApproveArg]) : async [T.ApproveRes] {
     let now = syncTrim();
     if (args.size() == 0) return [];
     let arg = args[0];
@@ -468,7 +468,7 @@ shared (install) persistent actor class Canister(
     [#Ok block_id];
   };
 
-  public shared ({ caller }) func iiname_revoke(args : [T.RevokeArg]) : async [T.RevokeRes] {
+  public shared ({ caller }) func icrc_acct_ns__proxy_revoke(args : [T.RevokeArg]) : async [T.RevokeRes] {
     let now = syncTrim();
     if (args.size() == 0) return [];
     let arg = args[0];
@@ -524,7 +524,7 @@ shared (install) persistent actor class Canister(
     [#Ok block_id];
   };
 
-  public shared ({ caller }) func iiname_transfer_from(args : [T.TransferFromArg]) : async [T.TransferFromRes] {
+  public shared ({ caller }) func icrc_acct_ns__proxy_transfer_from(args : [T.TransferFromArg]) : async [T.TransferFromRes] {
     let now = syncTrim();
     if (args.size() == 0) return [];
     let arg = args[0];
@@ -599,7 +599,7 @@ shared (install) persistent actor class Canister(
     [#Ok block_id];
   };
 
-  public shared query func iiname_main_subaccounts(arg : T.SubaccountsOfArg) : async T.SubaccountsOfRes {
+  public shared query func icrc_acct_ns__subaccounts(arg : T.SubaccountsOfArg) : async T.SubaccountsOfRes {
     let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
     let buf = Buffer.Buffer<Blob>(max_take);
     let main_u = L.getPrincipal(users, arg.main_owner, RBTree.empty());
@@ -611,9 +611,8 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func iiname_names(args : [ICRC1T.Account]) : async T.NamesOfRes {
+  public shared query func icrc_acct_ns__names(args : [ICRC1T.Account]) : async T.NamesOfRes {
     let max_take = Nat.min(args.size(), env.max_query_batch_size);
-    let now = Time64.nanos();
     let buff = Buffer.Buffer<T.Name>(max_take);
     label finding for (arg in args.vals()) {
       if (buff.size() >= max_take) break finding;
@@ -629,7 +628,7 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func iiname_operators(arg : T.OperatorsOfArg) : async T.OperatorsOfRes {
+  public shared query func icrc_acct_ns__operators(arg : T.OperatorsOfArg) : async T.OperatorsOfRes {
     let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
     let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
     let main_sub = Subaccount.get(arg.main.subaccount);
@@ -641,7 +640,7 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func iiname_operator_subaccounts(arg : T.OperatorSubsOfArg) : async T.OperatorSubsOfRes {
+  public shared query func icrc_acct_ns__operator_subaccounts(arg : T.OperatorSubsOfArg) : async T.OperatorSubsOfRes {
     let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
     let buf = Buffer.Buffer<Blob>(max_take);
     let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
@@ -656,9 +655,8 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func iiname_approvals(args : [T.ApprovalOfArg]) : async T.ApprovalsOfRes {
+  public shared query func icrc_acct_ns__approvals(args : [T.ApprovalOfArg]) : async T.ApprovalsOfRes {
     let max_take = Nat.min(args.size(), env.max_query_batch_size);
-    let now = Time64.nanos();
     let buff = Buffer.Buffer<Nat64>(max_take);
     label finding for (arg in args.vals()) {
       if (buff.size() >= max_take) break finding;
@@ -667,7 +665,7 @@ shared (install) persistent actor class Canister(
       let main = L.getBlob(main_u, main_sub, L.initMain());
       let operator = L.getPrincipal(main.operators, arg.operator.owner, RBTree.empty());
       let operator_sub = Subaccount.get(arg.operator.subaccount);
-      let expires_at = L.getBlob(operator, operator_sub, 0: Nat64);
+      let expires_at = L.getBlob(operator, operator_sub, 0 : Nat64);
       buff.add(expires_at);
     };
     {
@@ -677,7 +675,25 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func iiname_proxy_subaccounts(arg : T.ProxySubsOfArg) : async T.ProxySubsOfRes {
+  public shared query func icrc_acct_ns__accounts(args : [Text]) : async T.AccountsOfRes {
+    let max_take = Nat.min(args.size(), env.max_query_batch_size);
+    let buff = Buffer.Buffer<?ICRC1T.Account>(max_take);
+    label finding for (arg in args.vals()) {
+      if (buff.size() >= max_take) break finding;
+      let acct = switch (RBTree.get(names, Text.compare, arg)) {
+        case (?(owner, sub)) (?{ owner; subaccount = Subaccount.opt(sub) });
+        case _ null;
+      };
+      buff.add(acct);
+    };
+    {
+      total = RBTree.size(names);
+      results = Buffer.toArray(buff);
+      callbacks = [];
+    };
+  };
+
+  public shared query func icrc_acct_ns__proxy_subaccounts(arg : T.ProxySubsOfArg) : async T.ProxySubsOfRes {
     let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
     let buf = Buffer.Buffer<Blob>(max_take);
     let proxy_ptr = L.getPrincipal(proxies, arg.proxy_owner, RBTree.empty());
@@ -689,41 +705,21 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func iiname_mains(args : [ICRC1T.Account]) : async T.MainsOfRes {
+  public shared query func icrc_acct_ns__mains(args : [ICRC1T.Account]) : async T.MainsOfRes {
     let max_take = Nat.min(args.size(), env.max_query_batch_size);
-    let now = Time64.nanos();
     let buff = Buffer.Buffer<?ICRC1T.Account>(max_take);
     label finding for (arg in args.vals()) {
       if (buff.size() >= max_take) break finding;
       let proxy_ptr = L.getPrincipal(proxies, arg.owner, RBTree.empty());
       let proxy_sub = Subaccount.get(arg.subaccount);
       let main = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
-        case (?(owner, sub, expiry)) (?{ owner; subaccount = Subaccount.opt(sub)});
+        case (?(owner, sub, expiry)) (?{ owner; subaccount = Subaccount.opt(sub) });
         case _ null;
       };
       buff.add(main);
     };
     {
       total = RBTree.size(proxies);
-      results = Buffer.toArray(buff);
-      callbacks = [];
-    };
-  };
-
-  public shared query func iiname_accounts(args : [Text]) : async T.AccountsOfRes {
-    let max_take = Nat.min(args.size(), env.max_query_batch_size);
-    let now = Time64.nanos();
-    let buff = Buffer.Buffer<?ICRC1T.Account>(max_take);
-    label finding for (arg in args.vals()) {
-      if (buff.size() >= max_take) break finding;
-      let acct = switch (RBTree.get(names, Text.compare, arg)) {
-        case (?(owner, sub))(?{ owner; subaccount = Subaccount.opt(sub)});
-        case _ null;
-      };
-      buff.add(acct);
-    };
-    {
-      total = RBTree.size(names);
       results = Buffer.toArray(buff);
       callbacks = [];
     };
@@ -768,6 +764,108 @@ shared (install) persistent actor class Canister(
   };
   func syncTrim() : Nat64 {
     let now = Time64.nanos();
+    var round = 0;
+    let max_round = 10;
+    let start_time = now - env.duration.tx_window - env.duration.permitted_drift;
+    label trimming while (round < max_round) {
+      let (exp_t, name) = switch (RBTree.minKey(name_expiries)) {
+        case (?found) found;
+        case _ break trimming;
+      };
+      if (exp_t >= now) break trimming;
+      round += 1;
+      name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (exp_t, name));
+
+      let (main_p, main_sub) = switch (RBTree.get(names, Text.compare, name)) {
+        case (?found) found;
+        case _ continue trimming;
+      };
+      names := RBTree.delete(names, Text.compare, name);
+
+      var main_u = L.getPrincipal(users, main_p, RBTree.empty());
+      var main = L.getBlob(main_u, main_sub, L.initMain());
+      if (main.name == "" or main.expires_at < now) {
+        main := { main with name = ""; expires_at = 0; locked_until = 0 };
+      };
+      name_expiries := if (main.expires_at > 0) {
+        names := RBTree.insert(names, Text.compare, main.name, (main_p, main_sub));
+        RBTree.insert(name_expiries, L.compareNameExpiry, (main.expires_at, main.name), ());
+      } else {
+        names := RBTree.delete(names, Text.compare, main.name);
+        RBTree.delete(name_expiries, L.compareNameExpiry, (main.expires_at, main.name));
+      };
+      main_u := L.saveBlob(main_u, main_sub, main, L.isMain(main));
+      users := L.savePrincipal(users, main_p, main_u, RBTree.size(users) > 0);
+    };
+    label trimming while (round < max_round) {
+      let (exp_t, (from_p, from_sub), (operator_p, operator_sub)) = switch (RBTree.minKey(operator_expiries)) {
+        case (?found) found;
+        case _ break trimming;
+      };
+      if (exp_t >= now) break trimming;
+      round += 1;
+      operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (exp_t, (from_p, from_sub), (operator_p, operator_sub)));
+
+      var main_u = L.getPrincipal(users, from_p, RBTree.empty());
+      var main = L.getBlob(main_u, from_sub, L.initMain());
+      var operator = L.getPrincipal(main.operators, operator_p, RBTree.empty());
+      let expires_at = L.getBlob(operator, operator_sub, 0 : Nat64);
+      let expiry_key = (expires_at, (from_p, from_sub), (operator_p, operator_sub));
+      let is_expired = expires_at < now;
+      operator_expiries := if (is_expired) RBTree.delete(operator_expiries, L.compareManagerExpiry, expiry_key) else RBTree.insert(operator_expiries, L.compareManagerExpiry, expiry_key, ());
+
+      operator := L.saveBlob(operator, operator_sub, expires_at, not is_expired);
+      let operators = L.savePrincipal(main.operators, operator_p, operator, RBTree.size(operator) > 0);
+      main := { main with operators };
+      main_u := L.saveBlob(main_u, from_sub, main, L.isMain(main));
+      users := L.savePrincipal(users, from_p, main_u, RBTree.size(main_u) > 0);
+    };
+    label trimming while (round < max_round) {
+      let (exp_t, proxy_p, proxy_sub) = switch (RBTree.minKey(proxy_expiries)) {
+        case (?found) found;
+        case _ break trimming;
+      };
+      if (exp_t >= now) break trimming;
+      round += 1;
+      proxy_expiries := RBTree.delete(proxy_expiries, L.compareProxyExpiry, (exp_t, proxy_p, proxy_sub));
+
+      var proxy_ptr = L.getPrincipal(proxies, proxy_p, RBTree.empty());
+      let (from_p, from_sub, proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
+        case (?found) found;
+        case _ continue trimming;
+      };
+      let is_expired = proxy_expiry < now;
+      proxy_expiries := if (is_expired) {
+        proxy_ptr := RBTree.delete(proxy_ptr, Blob.compare, proxy_sub);
+        RBTree.delete(proxy_expiries, L.compareProxyExpiry, (proxy_expiry, proxy_p, proxy_sub));
+      } else {
+        proxy_ptr := RBTree.insert(proxy_ptr, Blob.compare, proxy_sub, (from_p, from_sub, proxy_expiry));
+        RBTree.insert(proxy_expiries, L.compareProxyExpiry, (proxy_expiry, proxy_p, proxy_sub), ());
+      };
+      proxies := L.savePrincipal(proxies, proxy_p, proxy_ptr, RBTree.size(proxy_ptr) > 0);
+    };
+    label trimming while (round < max_round) {
+      let (p, arg) = switch (RBTree.minKey(register_dedupes)) {
+        case (?found) found;
+        case _ break trimming;
+      };
+      round += 1;
+      switch (OptionX.compare(arg.created_at, ?start_time, Nat64.compare)) {
+        case (#less) register_dedupes := RBTree.delete(register_dedupes, L.dedupeRegister, (p, arg));
+        case _ break trimming;
+      };
+    };
+    label trimming while (round < max_round) {
+      let (p, arg) = switch (RBTree.minKey(approve_dedupes)) {
+        case (?found) found;
+        case _ break trimming;
+      };
+      round += 1;
+      switch (OptionX.compare(arg.created_at, ?start_time, Nat64.compare)) {
+        case (#less) approve_dedupes := RBTree.delete(approve_dedupes, L.dedupeApprove, (p, arg));
+        case _ break trimming;
+      };
+    };
     now;
   };
 };
