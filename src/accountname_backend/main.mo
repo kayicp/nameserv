@@ -51,18 +51,18 @@ shared (install) persistent actor class Canister(
     max_query_batch_size = 1;
     max_take_value = 1;
     name = {
-      price_tiers = [
-        { length = { min = 1; max = 1 }; tcycles_fee_multiplier = 10_000_000 }, // 1000
-        { length = { min = 2; max = 2 }; tcycles_fee_multiplier = 5_000_000 }, // 500
-        { length = { min = 3; max = 3 }; tcycles_fee_multiplier = 2_500_000 }, // 250
-        { length = { min = 4; max = 4 }; tcycles_fee_multiplier = 1_000_000 }, // 100
-        { length = { min = 5; max = 5 }; tcycles_fee_multiplier = 500_000 }, // 50
-        { length = { min = 6; max = 6 }; tcycles_fee_multiplier = 250_000 }, // 25
-        { length = { min = 7; max = 7 }; tcycles_fee_multiplier = 100_000 }, // 10
-        { length = { min = 8; max = 8 }; tcycles_fee_multiplier = 50_000 }, // 5
-        { length = { min = 9; max = 9 }; tcycles_fee_multiplier = 20_000 }, // 2
-        { length = { min = 10; max = 19 }; tcycles_fee_multiplier = 10_000 }, // 1
-        { length = { min = 20; max = 32 }; tcycles_fee_multiplier = 5_000 }, // 0.5 TCYCLES
+      length_tiers = [
+        { min = 1; max = 1; tcycles_fee_multiplier = 10_000_000 }, // 1000
+        { min = 2; max = 2; tcycles_fee_multiplier = 5_000_000 }, // 500
+        { min = 3; max = 3; tcycles_fee_multiplier = 2_500_000 }, // 250
+        { min = 4; max = 4; tcycles_fee_multiplier = 1_000_000 }, // 100
+        { min = 5; max = 5; tcycles_fee_multiplier = 500_000 }, // 50
+        { min = 6; max = 6; tcycles_fee_multiplier = 250_000 }, // 25
+        { min = 7; max = 7; tcycles_fee_multiplier = 100_000 }, // 10
+        { min = 8; max = 8; tcycles_fee_multiplier = 50_000 }, // 5
+        { min = 9; max = 9; tcycles_fee_multiplier = 20_000 }, // 2
+        { min = 10; max = 19; tcycles_fee_multiplier = 10_000 }, // 1
+        { min = 20; max = 32; tcycles_fee_multiplier = 5_000 }, // 0.5 TCYCLES
       ];
       duration = {
         max_expiry = Time64.DAYS(30);
@@ -89,7 +89,7 @@ shared (install) persistent actor class Canister(
   var blocks = RBTree.empty<Nat, ArchiveT.Block>();
   var users = RBTree.empty<Principal, T.User>();
   var proxies = RBTree.empty<Principal, T.Proxy>();
-  var proxy_expiries = RBTree.empty<(Nat64, Principal, Blob), ()>();
+  var proxy_expiries = RBTree.empty<(Nat64, proxy : (Principal, Blob), main : (Principal, Blob)), ()>();
   var operator_expiries = RBTree.empty<(Nat64, from : (Principal, Blob), operator : (Principal, Blob)), ()>();
 
   var names = RBTree.empty<Text, (Principal, Blob)>();
@@ -98,23 +98,18 @@ shared (install) persistent actor class Canister(
   var register_dedupes = RBTree.empty<(Principal, T.RegisterArg), Nat>();
   var approve_dedupes = RBTree.empty<(Principal, T.ApproveArg), Nat>();
 
-  public shared query func icrc_acct_ns__service_provider() : async ICRC1T.Account = async ({
+  public shared query func icrc_ans_service_provider() : async ICRC1T.Account = async ({
     owner = env.service_provider;
     subaccount = null;
   });
 
-  public shared query func icrc_acct_ns__price_tiers() : async [{
-    length : { min : Nat; max : Nat };
-    tcycles_fee_multiplier : Nat;
-  }] = async env.name.price_tiers;
+  public shared query func icrc_ans_length_tiers() : async [T.PriceTier] = async env.name.length_tiers;
 
-  public shared query func icrc_acct_ns__duration_packages() : async [{
-    years_base : Nat;
-    months_bonus : Nat;
-  }] = async env.name.duration.packages;
+  public shared query func icrc_ans_duration_packages() : async [T.DurationPackage] = async env.name.duration.packages;
 
-  public shared ({ caller }) func icrc_acct_ns__proxy_register(arg : T.RegisterArg) : async T.RegisterRes {
+  public shared ({ caller }) func icrc_ans_proxy_register(arg : T.RegisterArg) : async T.RegisterRes {
     let now = syncTrim();
+
     let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
     if (not ICRC1L.validateAccount(proxy_a)) return Error.text("Caller account is invalid");
 
@@ -126,8 +121,11 @@ shared (install) persistent actor class Canister(
     let is_icp = token_text == ICRC1T.ICP_ID;
     if (not is_icp and token_text != ICRC1T.TCYCLES_ID) return Error.text("Unsupported token; Only ICP (" # ICRC1T.ICP_ID # ") and TCYCLES (" # ICRC1T.TCYCLES_ID # ") are allowed");
 
-    let self_a = { owner = Principal.fromActor(Self); subaccount = null };
+    let linker = actor (Linker.ID) : Linker.Canister;
+    let linker_a = { owner = Principal.fromActor(linker); subaccount = null };
     let (icp_token, tcycles_token) = (actor (ICRC1T.ICP_ID) : ICRC1T.Canister, actor (ICRC1T.TCYCLES_ID) : ICRC1T.Canister);
+    let self_a = { owner = Principal.fromActor(Self); subaccount = null };
+
     let icp_xdr_call = switch (env.cmc) {
       case (?p_txt) {
         let cmc = actor (p_txt) : CMC.Self;
@@ -142,19 +140,20 @@ shared (install) persistent actor class Canister(
         hash_tree = "" : Blob;
       });
     };
-    let (icp_fee_call, tcycles_fee_call) = (icp_token.icrc1_fee(), tcycles_token.icrc1_fee());
-    let (icp_xdr, icp_fee, tcycles_fee) = (await icp_xdr_call, await icp_fee_call, await tcycles_fee_call);
+    let (icp_fee_call, tcycles_fee_call, linker_credits_call) = (icp_token.icrc1_fee(), tcycles_token.icrc1_fee(), linker.iilink_credits([self_a]));
+    let (icp_xdr, icp_fee, tcycles_fee, linker_credit) = (await icp_xdr_call, await icp_fee_call, await tcycles_fee_call, (await linker_credits_call).results[0]);
+    if (linker_credit == 0) return #Err(#InsufficientLinkCredits);
 
     let name_len = Text.size(arg.name);
     if (name_len == 0) return Error.text("Name must not be empty");
-    let maximum_length = env.name.price_tiers[env.name.price_tiers.size() - 1].length.max;
+    let maximum_length = env.name.length_tiers[env.name.length_tiers.size() - 1].max;
     if (name_len > maximum_length) return #Err(#NameTooLong { maximum_length });
     switch (L.validateName(arg.name)) {
       case (#Err err) return Error.text(err);
       case _ ();
     };
     var fee_base = 0;
-    label sizing for (tier in env.name.price_tiers.vals()) if (name_len >= tier.length.min and name_len <= tier.length.max) {
+    label sizing for (tier in env.name.length_tiers.vals()) if (name_len >= tier.min and name_len <= tier.max) {
       fee_base := tier.tcycles_fee_multiplier * tcycles_fee;
       break sizing;
     };
@@ -174,7 +173,6 @@ shared (install) persistent actor class Canister(
 
     let (token_can, token_fee) = if (is_icp) (icp_token, icp_fee) else (tcycles_token, tcycles_fee);
     let xfer_and_fee = arg.amount + token_fee;
-    let linker = actor (Linker.ID) : Linker.Canister;
     let (main_a, main_sub) = switch (arg.main) {
       case (?main_a) {
         let links_call = linker.iilink_icrc1_allowances([{
@@ -182,7 +180,7 @@ shared (install) persistent actor class Canister(
           proxy = proxy_a;
           spender = self_a;
         }]);
-        let (token_bal_call, token_aprv_call) = (token_can.icrc1_balance_of(main_a), token_can.icrc2_allowance({ account = main_a; spender = self_a }));
+        let (token_bal_call, token_aprv_call) = (token_can.icrc1_balance_of(main_a), token_can.icrc2_allowance({ account = main_a; spender = linker_a }));
         let (link, token_bal, token_aprv) = ((await links_call).results[0], await token_bal_call, await token_aprv_call);
         if (link.allowance < xfer_and_fee) return #Err(#InsufficientLinkAllowance link);
         if (link.expires_at < now) return #Err(#InsufficientLinkAllowance { allowance = 0 });
@@ -210,7 +208,7 @@ shared (install) persistent actor class Canister(
             main = ?filtered.main;
           };
           let main_sub = Subaccount.get(filtered.main.subaccount);
-          calls := Queue.insertHead(calls, (filtered, main_sub, token_can.icrc1_balance_of(filtered.main), token_can.icrc2_allowance({ account = filtered.main; spender = self_a })));
+          calls := Queue.insertHead(calls, (filtered, main_sub, token_can.icrc1_balance_of(filtered.main), token_can.icrc2_allowance({ account = filtered.main; spender = linker_a })));
         };
         let total_calls = Queue.size(calls);
         if (total_calls == 0) return #Err(#NoSufficientLinkAllowance { total = links.results.size(); maximum = maximum_allowance });
@@ -255,11 +253,6 @@ shared (install) persistent actor class Canister(
     };
     var main_u = L.getPrincipal(users, main_a.owner, RBTree.empty());
     var main = L.getBlob(main_u, main_sub, L.initMain());
-    func save<T>(ret : T) : T {
-      main_u := L.saveBlob(main_u, main_sub, main, L.isMain(main));
-      users := L.savePrincipal(users, main_a.owner, main_u, RBTree.size(main_u) > 0);
-      ret;
-    };
     let start_expiry = if (main.name == "") now else {
       if (main.locked_until > now) return #Err(#Locked { until = main.locked_until });
       if (main.expires_at > now) {
@@ -279,22 +272,24 @@ shared (install) persistent actor class Canister(
       case (#Err err) return #Err err;
       case _ ();
     };
-    let (old_name, old_name_expiry) = (main.name, main.expires_at);
-    main := { main with name = arg.name };
-    let locked_until = now + env.name.duration.lock;
-    main := { main with locked_until; expires_at = locked_until };
+    main := { main with locked_until = now + env.name.duration.lock };
+    func save<T>(ret : T) : T {
+      main_u := L.saveBlob(main_u, main_sub, main, L.isMain(main));
+      users := L.savePrincipal(users, main_a.owner, main_u, RBTree.size(main_u) > 0);
+      ret;
+    };
     save(); // lock main
 
     names := RBTree.insert(names, Text.compare, arg.name, (main_a.owner, main_sub)); // lock name
+    name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (main.locked_until, arg.name), ());
 
     func unlock<T>(ret : T) : T {
-      if (arg.name != old_name) names := RBTree.delete(names, Text.compare, arg.name);
-
       main_u := L.getPrincipal(users, main_a.owner, RBTree.empty());
-      main := L.getBlob(main_u, main_sub, main);
-      main := { main with name = old_name };
-      main := { main with expires_at = old_name_expiry };
+      main := L.getBlob(main_u, main_sub, L.initMain());
       main := { main with locked_until = 0 };
+
+      if (arg.name != main.name) names := RBTree.delete(names, Text.compare, arg.name);
+      name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (main.locked_until, arg.name));
       ret;
     };
     let pay_arg = {
@@ -312,294 +307,297 @@ shared (install) persistent actor class Canister(
       case (#Ok ok) ok.block_index;
       case (#Err err) return save(#Err(#TransferFailed err));
     };
+    let proxy_sub = Subaccount.get(proxy_a.subaccount);
+    names := RBTree.delete(names, Text.compare, main.name);
+    name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (main.expires_at, main.name));
+    proxy_expiries := RBTree.delete(proxy_expiries, L.compareProxyExpiry, (main.expires_at, (proxy_a.owner, proxy_sub), (main_a.owner, main_sub)));
+
     let new_name_expiry = start_expiry + Time64.DAYS(Nat64.fromNat(selected_package.years_base * 365)) + Time64.DAYS(Nat64.fromNat(selected_package.months_bonus * 30));
     main := { main with name = arg.name };
     main := { main with expires_at = new_name_expiry };
     save(); // confirm main
 
-    names := RBTree.delete(names, Text.compare, old_name);
-    names := RBTree.insert(names, Text.compare, arg.name, (main_a.owner, main_sub)); // confirm name
-
-    name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (old_name_expiry, old_name));
-    name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (new_name_expiry, arg.name), ());
+    names := RBTree.insert(names, Text.compare, main.name, (main_a.owner, main_sub)); // confirm name
+    name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (main.expires_at, main.name), ());
 
     var proxy_ptr = L.getPrincipal(proxies, proxy_a.owner, RBTree.empty());
-    let proxy_sub = Subaccount.get(proxy_a.subaccount);
-    let (old_main_p, old_main_sub, old_proxy_expiry) = L.getBlob(proxy_ptr, proxy_sub, (main_a.owner, main_sub, 0 : Nat64));
-    proxy_ptr := L.saveBlob(proxy_ptr, proxy_sub, (main_a.owner, main_sub, new_name_expiry), true);
+    var proxysub_ptr = L.getBlob(proxy_ptr, proxy_sub, RBTree.empty());
+    var main_ptr = L.getPrincipal(proxysub_ptr, main_a.owner, RBTree.empty());
+    main_ptr := L.saveBlob(main_ptr, main_sub, (), true);
+    proxysub_ptr := L.savePrincipal(proxysub_ptr, main_a.owner, main_ptr, true);
+    proxy_ptr := L.saveBlob(proxy_ptr, proxy_sub, proxysub_ptr, true);
     proxies := L.savePrincipal(proxies, proxy_a.owner, proxy_ptr, true); // confirm proxy
 
-    proxy_expiries := RBTree.delete(proxy_expiries, L.compareProxyExpiry, (old_proxy_expiry, proxy_a.owner, proxy_sub));
-    proxy_expiries := RBTree.insert(proxy_expiries, L.compareProxyExpiry, (new_name_expiry, proxy_a.owner, proxy_sub), ());
+    proxy_expiries := RBTree.insert(proxy_expiries, L.compareProxyExpiry, (new_name_expiry, (proxy_a.owner, proxy_sub), (main_a.owner, main_sub)), ());
 
-    let (block_id, phash) = ArchiveL.getPhash(blocks);
-    if (arg.created_at != null) register_dedupes := RBTree.insert(register_dedupes, L.dedupeRegister, (caller, arg), block_id);
-    newBlock(block_id, L.valueRegister(caller, arg, main_a, new_name_expiry, pay_id, now, if (is_icp) xdr_permyriad_per_icp else 0, phash));
-
-    // ignore await* sendBlock();
-    #Ok block_id;
-  };
-
-  public shared ({ caller }) func icrc_acct_ns__proxy_transfer(args : [T.TransferArg]) : async [T.TransferRes] {
-    let now = syncTrim();
-    if (args.size() == 0) return [];
-    let arg = args[0];
-    let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
-    if (not ICRC1L.validateAccount(proxy_a)) return [Error.text("Caller account is invalid")];
-    if (not ICRC1L.validateAccount(arg.to)) return [Error.text("Recipient account is invalid")];
-
-    switch (checkMemo(arg.memo)) {
-      case (#Err err) return [#Err err];
-      case _ ();
-    };
-    switch (arg.time_toll) {
-      case (?defined) if (defined != env.name.duration.toll) return [#Err(#BadTimeToll { expected_time_toll = env.name.duration.toll })];
-      case _ ();
-    };
-    var proxy_ptr = L.getPrincipal(proxies, proxy_a.owner, RBTree.empty());
-    let proxy_sub = Subaccount.get(proxy_a.subaccount);
-    let (from_p, from_sub, old_proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
-      case (?found) found;
-      case _ return [#Err(#UnknownProxy)];
-    };
-    var from_u = L.getPrincipal(users, from_p, RBTree.empty());
-    var from_main = L.getBlob(from_u, from_sub, L.initMain());
-    if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
-    if (from_main.locked_until > now) return [#Err(#SenderLocked { until = from_main.locked_until })];
-    let remaining = from_main.expires_at - now;
-    if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
-
-    var to_u = L.getPrincipal(users, arg.to.owner, RBTree.empty());
-    let to_sub = Subaccount.get(arg.to.subaccount);
-    if (from_p == arg.to.owner and from_sub == to_sub) return [Error.text("Self-transfer is not allowed")];
-    if (proxy_a.owner == arg.to.owner and proxy_sub == to_sub) return [Error.text("Proxy cannot receive")];
-
-    var to_main = L.getBlob(to_u, to_sub, L.initMain());
-    if (to_main.name != "" and (to_main.expires_at > now or to_main.locked_until > now)) return [#Err(#NamedRecipient to_main)];
-
-    let new_name_expiry = from_main.expires_at - env.name.duration.toll;
-    to_main := { to_main with name = from_main.name };
-    to_main := { to_main with expires_at = new_name_expiry };
-    to_u := L.saveBlob(to_u, to_sub, to_main, true);
-    users := L.savePrincipal(users, arg.to.owner, to_u, true);
-
-    names := RBTree.insert(names, Text.compare, to_main.name, (arg.to.owner, to_sub));
-
-    name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (from_main.expires_at, from_main.name));
-    name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (to_main.expires_at, to_main.name), ());
-
-    from_u := L.getPrincipal(users, from_p, RBTree.empty());
-    from_main := L.getBlob(from_u, from_sub, from_main);
-    from_main := { from_main with name = ""; expires_at = 0 };
-    from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
-    users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
-
-    let (block_id, phash) = ArchiveL.getPhash(blocks);
-    newBlock(block_id, L.valueTransfer(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
+    let (block_index, phash) = ArchiveL.getPhash(blocks);
+    if (arg.created_at != null) register_dedupes := RBTree.insert(register_dedupes, L.dedupeRegister, (caller, arg), block_index);
+    newBlock(block_index, L.valueRegister(caller, arg, main_a, new_name_expiry, pay_id, now, if (is_icp) xdr_permyriad_per_icp else 0, phash));
 
     // ignore await* sendBlock();
-    [#Ok block_id];
+    #Ok { block_index; main = main_a };
   };
 
-  public shared ({ caller }) func icrc_acct_ns__proxy_approve(args : [T.ApproveArg]) : async [T.ApproveRes] {
-    let now = syncTrim();
-    if (args.size() == 0) return [];
-    let arg = args[0];
-    let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
-    if (not ICRC1L.validateAccount(proxy_a)) return [Error.text("Caller account is invalid")];
-    if (not ICRC1L.validateAccount(arg.operator)) return [Error.text("Operator account is invalid")];
+  // public shared ({ caller }) func icrc_ans_proxy_transfer(args : [T.TransferArg]) : async [T.TransferRes] {
+  //   let now = syncTrim();
+  //   if (args.size() == 0) return [];
+  //   let arg = args[0];
+  //   let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
+  //   if (not ICRC1L.validateAccount(proxy_a)) return [Error.text("Caller account is invalid")];
+  //   if (not ICRC1L.validateAccount(arg.to)) return [Error.text("Recipient account is invalid")];
 
-    switch (checkMemo(arg.memo)) {
-      case (#Err err) return [#Err err];
-      case _ ();
-    };
-    switch (arg.time_toll) {
-      case (?defined) if (defined != env.name.duration.toll) return [#Err(#BadTimeToll { expected_time_toll = env.name.duration.toll })];
-      case _ ();
-    };
-    var proxy_ptr = L.getPrincipal(proxies, proxy_a.owner, RBTree.empty());
-    let proxy_sub = Subaccount.get(proxy_a.subaccount);
-    let (from_p, from_sub, old_proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
-      case (?found) found;
-      case _ return [#Err(#UnknownProxy)];
-    };
-    var from_u = L.getPrincipal(users, from_p, RBTree.empty());
-    let operator_sub = Subaccount.get(arg.operator.subaccount);
-    if (from_p == arg.operator.owner and from_sub == operator_sub) return [Error.text("Self-approve is not allowed")];
-    if (proxy_a.owner == arg.operator.owner and proxy_sub == operator_sub) return [Error.text("Proxy cannot be a operator")];
+  //   switch (checkMemo(arg.memo)) {
+  //     case (#Err err) return [#Err err];
+  //     case _ ();
+  //   };
+  //   switch (arg.time_toll) {
+  //     case (?defined) if (defined != env.name.duration.toll) return [#Err(#BadTimeToll { expected_time_toll = env.name.duration.toll })];
+  //     case _ ();
+  //   };
+  //   var proxy_ptr = L.getPrincipal(proxies, proxy_a.owner, RBTree.empty());
+  //   let proxy_sub = Subaccount.get(proxy_a.subaccount);
+  //   let (from_p, from_sub, old_proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
+  //     case (?found) found;
+  //     case _ return [#Err(#UnknownProxy)];
+  //   };
+  //   var from_u = L.getPrincipal(users, from_p, RBTree.empty());
+  //   var from_main = L.getBlob(from_u, from_sub, L.initMain());
+  //   if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
+  //   if (from_main.locked_until > now) return [#Err(#SenderLocked { until = from_main.locked_until })];
+  //   let remaining = from_main.expires_at - now;
+  //   if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
 
-    var from_main = L.getBlob(from_u, from_sub, L.initMain());
-    if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
-    if (from_main.locked_until > now) return [#Err(#SenderLocked { until = from_main.locked_until })];
-    let remaining = from_main.expires_at - now;
-    if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
+  //   var to_u = L.getPrincipal(users, arg.to.owner, RBTree.empty());
+  //   let to_sub = Subaccount.get(arg.to.subaccount);
+  //   if (from_p == arg.to.owner and from_sub == to_sub) return [Error.text("Self-transfer is not allowed")];
+  //   if (proxy_a.owner == arg.to.owner and proxy_sub == to_sub) return [Error.text("Proxy cannot receive")];
 
-    if (arg.expires_at < now) return [#Err(#Expired { time = now })];
-    let maximum_expiry = now + env.name.duration.max_expiry;
-    if (arg.expires_at > maximum_expiry) return [#Err(#ExpiresTooLate { maximum_expiry })];
+  //   var to_main = L.getBlob(to_u, to_sub, L.initMain());
+  //   if (to_main.name != "" and (to_main.expires_at > now or to_main.locked_until > now)) return [#Err(#NamedRecipient to_main)];
 
-    switch (checkIdempotency(caller, #Approve arg, arg.created_at, now)) {
-      case (#Err err) return [#Err err];
-      case _ ();
-    };
-    var from_operator = L.getPrincipal(from_main.operators, arg.operator.owner, RBTree.empty());
-    let old_operator_expiry = L.getBlob(from_operator, operator_sub, 0 : Nat64);
-    from_operator := RBTree.insert(from_operator, Blob.compare, operator_sub, arg.expires_at);
-    let operators = L.savePrincipal(from_main.operators, arg.operator.owner, from_operator, true);
-    from_main := { from_main with operators };
+  //   let new_name_expiry = from_main.expires_at - env.name.duration.toll;
+  //   to_main := { to_main with name = from_main.name };
+  //   to_main := { to_main with expires_at = new_name_expiry };
+  //   to_u := L.saveBlob(to_u, to_sub, to_main, true);
+  //   users := L.savePrincipal(users, arg.to.owner, to_u, true);
 
-    let old_name_expiry = from_main.expires_at;
-    let new_name_expiry = from_main.expires_at - env.name.duration.toll;
-    from_main := { from_main with expires_at = new_name_expiry };
-    from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
-    users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
+  //   names := RBTree.insert(names, Text.compare, to_main.name, (arg.to.owner, to_sub));
 
-    operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (old_operator_expiry, (from_p, from_sub), (arg.operator.owner, operator_sub)));
-    operator_expiries := RBTree.insert(operator_expiries, L.compareManagerExpiry, (arg.expires_at, (from_p, from_sub), (arg.operator.owner, operator_sub)), ());
+  //   name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (from_main.expires_at, from_main.name));
+  //   name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (to_main.expires_at, to_main.name), ());
 
-    name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (old_name_expiry, from_main.name));
-    name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (new_name_expiry, from_main.name), ());
+  //   from_u := L.getPrincipal(users, from_p, RBTree.empty());
+  //   from_main := L.getBlob(from_u, from_sub, from_main);
+  //   from_main := { from_main with name = ""; expires_at = 0 };
+  //   from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
+  //   users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
 
-    let (block_id, phash) = ArchiveL.getPhash(blocks);
-    if (arg.created_at != null) approve_dedupes := RBTree.insert(approve_dedupes, L.dedupeApprove, (caller, arg), block_id);
-    newBlock(block_id, L.valueApprove(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
+  //   let (block_id, phash) = ArchiveL.getPhash(blocks);
+  //   newBlock(block_id, L.valueTransfer(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
 
-    // ignore await* sendBlock();
-    [#Ok block_id];
-  };
+  //   // ignore await* sendBlock();
+  //   [#Ok block_id];
+  // };
 
-  public shared ({ caller }) func icrc_acct_ns__proxy_revoke(args : [T.RevokeArg]) : async [T.RevokeRes] {
-    let now = syncTrim();
-    if (args.size() == 0) return [];
-    let arg = args[0];
-    let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
-    if (not ICRC1L.validateAccount(proxy_a)) return [Error.text("Caller account is invalid")];
-    if (not ICRC1L.validateAccount(arg.operator)) return [Error.text("Manager account is invalid")];
+  // public shared ({ caller }) func icrc_ans_proxy_approve(args : [T.ApproveArg]) : async [T.ApproveRes] {
+  //   let now = syncTrim();
+  //   if (args.size() == 0) return [];
+  //   let arg = args[0];
+  //   let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
+  //   if (not ICRC1L.validateAccount(proxy_a)) return [Error.text("Caller account is invalid")];
+  //   if (not ICRC1L.validateAccount(arg.operator)) return [Error.text("Operator account is invalid")];
 
-    switch (checkMemo(arg.memo)) {
-      case (#Err err) return [#Err err];
-      case _ ();
-    };
-    switch (arg.time_toll) {
-      case (?defined) if (defined != env.name.duration.toll) return [#Err(#BadTimeToll { expected_time_toll = env.name.duration.toll })];
-      case _ ();
-    };
-    var proxy_ptr = L.getPrincipal(proxies, proxy_a.owner, RBTree.empty());
-    let proxy_sub = Subaccount.get(proxy_a.subaccount);
-    let (from_p, from_sub, old_proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
-      case (?found) found;
-      case _ return [#Err(#UnknownProxy)];
-    };
-    var from_u = L.getPrincipal(users, from_p, RBTree.empty());
-    var from_main = L.getBlob(from_u, from_sub, L.initMain());
-    if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
-    if (from_main.locked_until > now) return [#Err(#SenderLocked { until = from_main.locked_until })];
-    let remaining = from_main.expires_at - now;
-    if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
+  //   switch (checkMemo(arg.memo)) {
+  //     case (#Err err) return [#Err err];
+  //     case _ ();
+  //   };
+  //   switch (arg.time_toll) {
+  //     case (?defined) if (defined != env.name.duration.toll) return [#Err(#BadTimeToll { expected_time_toll = env.name.duration.toll })];
+  //     case _ ();
+  //   };
+  //   var proxy_ptr = L.getPrincipal(proxies, proxy_a.owner, RBTree.empty());
+  //   let proxy_sub = Subaccount.get(proxy_a.subaccount);
+  //   let (from_p, from_sub, old_proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
+  //     case (?found) found;
+  //     case _ return [#Err(#UnknownProxy)];
+  //   };
+  //   var from_u = L.getPrincipal(users, from_p, RBTree.empty());
+  //   let operator_sub = Subaccount.get(arg.operator.subaccount);
+  //   if (from_p == arg.operator.owner and from_sub == operator_sub) return [Error.text("Self-approve is not allowed")];
+  //   if (proxy_a.owner == arg.operator.owner and proxy_sub == operator_sub) return [Error.text("Proxy cannot be a operator")];
 
-    var from_operator = L.getPrincipal(from_main.operators, arg.operator.owner, RBTree.empty());
-    let operator_sub = Subaccount.get(arg.operator.subaccount);
-    let old_operator_expiry = switch (RBTree.get(from_operator, Blob.compare, operator_sub)) {
-      case (?found) found;
-      case _ return [#Err(#UnknownOperator)];
-    };
-    from_operator := RBTree.delete(from_operator, Blob.compare, operator_sub);
-    let operators = L.savePrincipal(from_main.operators, arg.operator.owner, from_operator, true);
-    from_main := { from_main with operators };
+  //   var from_main = L.getBlob(from_u, from_sub, L.initMain());
+  //   if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
+  //   if (from_main.locked_until > now) return [#Err(#SenderLocked { until = from_main.locked_until })];
+  //   let remaining = from_main.expires_at - now;
+  //   if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
 
-    let old_name_expiry = from_main.expires_at;
-    let new_name_expiry = from_main.expires_at - env.name.duration.toll;
-    from_main := { from_main with expires_at = new_name_expiry };
-    from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
-    users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
-    operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (old_operator_expiry, (from_p, from_sub), (arg.operator.owner, operator_sub)));
+  //   if (arg.expires_at < now) return [#Err(#Expired { time = now })];
+  //   let maximum_expiry = now + env.name.duration.max_expiry;
+  //   if (arg.expires_at > maximum_expiry) return [#Err(#ExpiresTooLate { maximum_expiry })];
 
-    name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (old_name_expiry, from_main.name));
-    name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (new_name_expiry, from_main.name), ());
+  //   switch (checkIdempotency(caller, #Approve arg, arg.created_at, now)) {
+  //     case (#Err err) return [#Err err];
+  //     case _ ();
+  //   };
+  //   var from_operator = L.getPrincipal(from_main.operators, arg.operator.owner, RBTree.empty());
+  //   let old_operator_expiry = L.getBlob(from_operator, operator_sub, 0 : Nat64);
+  //   from_operator := RBTree.insert(from_operator, Blob.compare, operator_sub, arg.expires_at);
+  //   let operators = L.savePrincipal(from_main.operators, arg.operator.owner, from_operator, true);
+  //   from_main := { from_main with operators };
 
-    let (block_id, phash) = ArchiveL.getPhash(blocks);
-    newBlock(block_id, L.valueRevoke(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
+  //   let old_name_expiry = from_main.expires_at;
+  //   let new_name_expiry = from_main.expires_at - env.name.duration.toll;
+  //   from_main := { from_main with expires_at = new_name_expiry };
+  //   from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
+  //   users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
 
-    // ignore await* sendBlock();
-    [#Ok block_id];
-  };
+  //   operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (old_operator_expiry, (from_p, from_sub), (arg.operator.owner, operator_sub)));
+  //   operator_expiries := RBTree.insert(operator_expiries, L.compareManagerExpiry, (arg.expires_at, (from_p, from_sub), (arg.operator.owner, operator_sub)), ());
 
-  public shared ({ caller }) func icrc_acct_ns__proxy_transfer_from(args : [T.TransferFromArg]) : async [T.TransferFromRes] {
-    let now = syncTrim();
-    if (args.size() == 0) return [];
-    let arg = args[0];
-    let operator_a = { owner = caller; subaccount = arg.operator_subaccount };
-    if (not ICRC1L.validateAccount(operator_a)) return [Error.text("Caller account is invalid")];
-    if (not ICRC1L.validateAccount(arg.proxy)) return [Error.text("Proxy account is invalid")];
-    if (not ICRC1L.validateAccount(arg.to)) return [Error.text("Recipient account is invalid")];
+  //   name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (old_name_expiry, from_main.name));
+  //   name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (new_name_expiry, from_main.name), ());
 
-    let operator_sub = Subaccount.get(operator_a.subaccount);
-    let proxy_sub = Subaccount.get(arg.proxy.subaccount);
-    if (arg.proxy.owner == operator_a.owner and proxy_sub == operator_sub) return [Error.text("Caller cannot spend")];
-    let to_sub = Subaccount.get(arg.to.subaccount);
-    if (arg.proxy.owner == arg.to.owner and proxy_sub == to_sub) return [Error.text("Proxy cannot receive")];
+  //   let (block_id, phash) = ArchiveL.getPhash(blocks);
+  //   if (arg.created_at != null) approve_dedupes := RBTree.insert(approve_dedupes, L.dedupeApprove, (caller, arg), block_id);
+  //   newBlock(block_id, L.valueApprove(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
 
-    switch (checkMemo(arg.memo)) {
-      case (#Err err) return [#Err err];
-      case _ ();
-    };
-    switch (arg.time_toll) {
-      case (?defined) if (defined != env.name.duration.toll) return [#Err(#BadTimeToll { expected_time_toll = env.name.duration.toll })];
-      case _ ();
-    };
-    var proxy_ptr = L.getPrincipal(proxies, arg.proxy.owner, RBTree.empty());
-    let (from_p, from_sub, old_proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
-      case (?found) found;
-      case _ return [#Err(#UnknownProxy)];
-    };
-    if (from_p == operator_a.owner and from_sub == operator_sub) return [Error.text("Sender cannot spend")];
-    if (from_p == arg.to.owner and from_sub == to_sub) return [Error.text("Self-transfer is not allowed")];
+  //   // ignore await* sendBlock();
+  //   [#Ok block_id];
+  // };
 
-    var from_u = L.getPrincipal(users, from_p, RBTree.empty());
-    var from_main = L.getBlob(from_u, from_sub, L.initMain());
-    if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
-    if (from_main.locked_until > now) return [#Err(#SenderLocked { until = from_main.locked_until })];
-    let remaining = from_main.expires_at - now;
-    if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
+  // public shared ({ caller }) func icrc_ans_proxy_revoke(args : [T.RevokeArg]) : async [T.RevokeRes] {
+  //   let now = syncTrim();
+  //   if (args.size() == 0) return [];
+  //   let arg = args[0];
+  //   let proxy_a = { owner = caller; subaccount = arg.proxy_subaccount };
+  //   if (not ICRC1L.validateAccount(proxy_a)) return [Error.text("Caller account is invalid")];
+  //   if (not ICRC1L.validateAccount(arg.operator)) return [Error.text("Manager account is invalid")];
 
-    var from_operator = L.getPrincipal(from_main.operators, operator_a.owner, RBTree.empty());
-    let approval_expiry = L.getBlob(from_operator, operator_sub, 0 : Nat64);
-    if (approval_expiry < now) return [#Err(#UnknownOperator)];
+  //   switch (checkMemo(arg.memo)) {
+  //     case (#Err err) return [#Err err];
+  //     case _ ();
+  //   };
+  //   switch (arg.time_toll) {
+  //     case (?defined) if (defined != env.name.duration.toll) return [#Err(#BadTimeToll { expected_time_toll = env.name.duration.toll })];
+  //     case _ ();
+  //   };
+  //   var proxy_ptr = L.getPrincipal(proxies, proxy_a.owner, RBTree.empty());
+  //   let proxy_sub = Subaccount.get(proxy_a.subaccount);
+  //   let (from_p, from_sub, old_proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
+  //     case (?found) found;
+  //     case _ return [#Err(#UnknownProxy)];
+  //   };
+  //   var from_u = L.getPrincipal(users, from_p, RBTree.empty());
+  //   var from_main = L.getBlob(from_u, from_sub, L.initMain());
+  //   if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
+  //   if (from_main.locked_until > now) return [#Err(#SenderLocked { until = from_main.locked_until })];
+  //   let remaining = from_main.expires_at - now;
+  //   if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
 
-    var to_u = L.getPrincipal(users, arg.to.owner, RBTree.empty());
-    var to_main = L.getBlob(to_u, to_sub, L.initMain());
-    if (to_main.name != "" and (to_main.expires_at > now or to_main.locked_until > now)) return [#Err(#NamedRecipient to_main)];
+  //   var from_operator = L.getPrincipal(from_main.operators, arg.operator.owner, RBTree.empty());
+  //   let operator_sub = Subaccount.get(arg.operator.subaccount);
+  //   let old_operator_expiry = switch (RBTree.get(from_operator, Blob.compare, operator_sub)) {
+  //     case (?found) found;
+  //     case _ return [#Err(#UnknownOperator)];
+  //   };
+  //   from_operator := RBTree.delete(from_operator, Blob.compare, operator_sub);
+  //   let operators = L.savePrincipal(from_main.operators, arg.operator.owner, from_operator, true);
+  //   from_main := { from_main with operators };
 
-    let new_name_expiry = from_main.expires_at - env.name.duration.toll;
-    to_main := { to_main with name = from_main.name };
-    to_main := { to_main with expires_at = new_name_expiry };
-    to_u := L.saveBlob(to_u, to_sub, to_main, true);
-    users := L.savePrincipal(users, arg.to.owner, to_u, true);
+  //   let old_name_expiry = from_main.expires_at;
+  //   let new_name_expiry = from_main.expires_at - env.name.duration.toll;
+  //   from_main := { from_main with expires_at = new_name_expiry };
+  //   from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
+  //   users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
+  //   operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (old_operator_expiry, (from_p, from_sub), (arg.operator.owner, operator_sub)));
 
-    names := RBTree.insert(names, Text.compare, to_main.name, (arg.to.owner, to_sub));
+  //   name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (old_name_expiry, from_main.name));
+  //   name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (new_name_expiry, from_main.name), ());
 
-    name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (from_main.expires_at, from_main.name));
-    name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (to_main.expires_at, to_main.name), ());
+  //   let (block_id, phash) = ArchiveL.getPhash(blocks);
+  //   newBlock(block_id, L.valueRevoke(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
 
-    from_u := L.getPrincipal(users, from_p, RBTree.empty());
-    from_main := L.getBlob(from_u, from_sub, from_main);
-    from_main := { from_main with name = ""; expires_at = 0 };
-    from_operator := L.saveBlob(from_operator, operator_sub, 0 : Nat64, false);
-    let operators = L.savePrincipal(from_main.operators, operator_a.owner, from_operator, RBTree.size(from_operator) > 0);
-    from_main := { from_main with operators };
-    from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
-    users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
+  //   // ignore await* sendBlock();
+  //   [#Ok block_id];
+  // };
 
-    operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (approval_expiry, (from_p, from_sub), (operator_a.owner, operator_sub)));
+  // public shared ({ caller }) func icrc_ans_proxy_transfer_from(args : [T.TransferFromArg]) : async [T.TransferFromRes] {
+  //   let now = syncTrim();
+  //   if (args.size() == 0) return [];
+  //   let arg = args[0];
+  //   let operator_a = { owner = caller; subaccount = arg.operator_subaccount };
+  //   if (not ICRC1L.validateAccount(operator_a)) return [Error.text("Caller account is invalid")];
+  //   if (not ICRC1L.validateAccount(arg.proxy)) return [Error.text("Proxy account is invalid")];
+  //   if (not ICRC1L.validateAccount(arg.to)) return [Error.text("Recipient account is invalid")];
 
-    let (block_id, phash) = ArchiveL.getPhash(blocks);
-    newBlock(block_id, L.valueTransferFrom(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
+  //   let operator_sub = Subaccount.get(operator_a.subaccount);
+  //   let proxy_sub = Subaccount.get(arg.proxy.subaccount);
+  //   if (arg.proxy.owner == operator_a.owner and proxy_sub == operator_sub) return [Error.text("Caller cannot spend")];
+  //   let to_sub = Subaccount.get(arg.to.subaccount);
+  //   if (arg.proxy.owner == arg.to.owner and proxy_sub == to_sub) return [Error.text("Proxy cannot receive")];
 
-    // ignore await* sendBlock();
-    [#Ok block_id];
-  };
+  //   switch (checkMemo(arg.memo)) {
+  //     case (#Err err) return [#Err err];
+  //     case _ ();
+  //   };
+  //   switch (arg.time_toll) {
+  //     case (?defined) if (defined != env.name.duration.toll) return [#Err(#BadTimeToll { expected_time_toll = env.name.duration.toll })];
+  //     case _ ();
+  //   };
+  //   var proxy_ptr = L.getPrincipal(proxies, arg.proxy.owner, RBTree.empty());
+  //   let (from_p, from_sub, old_proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
+  //     case (?found) found;
+  //     case _ return [#Err(#UnknownProxy)];
+  //   };
+  //   if (from_p == operator_a.owner and from_sub == operator_sub) return [Error.text("Sender cannot spend")];
+  //   if (from_p == arg.to.owner and from_sub == to_sub) return [Error.text("Self-transfer is not allowed")];
 
-  public shared query func icrc_acct_ns__subaccounts(arg : T.SubaccountsOfArg) : async T.SubaccountsOfRes {
+  //   var from_u = L.getPrincipal(users, from_p, RBTree.empty());
+  //   var from_main = L.getBlob(from_u, from_sub, L.initMain());
+  //   if (from_main.name == "" or from_main.expires_at < now) return [#Err(#UnnamedSender)];
+  //   if (from_main.locked_until > now) return [#Err(#SenderLocked { until = from_main.locked_until })];
+  //   let remaining = from_main.expires_at - now;
+  //   if (remaining < env.name.duration.toll) return [#Err(#InsufficientTime { remaining })];
+
+  //   var from_operator = L.getPrincipal(from_main.operators, operator_a.owner, RBTree.empty());
+  //   let approval_expiry = L.getBlob(from_operator, operator_sub, 0 : Nat64);
+  //   if (approval_expiry < now) return [#Err(#UnknownOperator)];
+
+  //   var to_u = L.getPrincipal(users, arg.to.owner, RBTree.empty());
+  //   var to_main = L.getBlob(to_u, to_sub, L.initMain());
+  //   if (to_main.name != "" and (to_main.expires_at > now or to_main.locked_until > now)) return [#Err(#NamedRecipient to_main)];
+
+  //   let new_name_expiry = from_main.expires_at - env.name.duration.toll;
+  //   to_main := { to_main with name = from_main.name };
+  //   to_main := { to_main with expires_at = new_name_expiry };
+  //   to_u := L.saveBlob(to_u, to_sub, to_main, true);
+  //   users := L.savePrincipal(users, arg.to.owner, to_u, true);
+
+  //   names := RBTree.insert(names, Text.compare, to_main.name, (arg.to.owner, to_sub));
+
+  //   name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (from_main.expires_at, from_main.name));
+  //   name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (to_main.expires_at, to_main.name), ());
+
+  //   from_u := L.getPrincipal(users, from_p, RBTree.empty());
+  //   from_main := L.getBlob(from_u, from_sub, from_main);
+  //   from_main := { from_main with name = ""; expires_at = 0 };
+  //   from_operator := L.saveBlob(from_operator, operator_sub, 0 : Nat64, false);
+  //   let operators = L.savePrincipal(from_main.operators, operator_a.owner, from_operator, RBTree.size(from_operator) > 0);
+  //   from_main := { from_main with operators };
+  //   from_u := L.saveBlob(from_u, from_sub, from_main, L.isMain(from_main));
+  //   users := L.savePrincipal(users, from_p, from_u, RBTree.size(from_u) > 0);
+
+  //   operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (approval_expiry, (from_p, from_sub), (operator_a.owner, operator_sub)));
+
+  //   let (block_id, phash) = ArchiveL.getPhash(blocks);
+  //   newBlock(block_id, L.valueTransferFrom(caller, arg, from_p, Subaccount.opt(from_sub), Nat64.toNat(env.name.duration.toll), now, phash));
+
+  //   // ignore await* sendBlock();
+  //   [#Ok block_id];
+  // };
+
+  public shared query func icrc_ans_subaccounts(arg : T.SubaccountsOfArg) : async T.SubaccountsOfRes {
     let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
     let buf = Buffer.Buffer<Blob>(max_take);
     let main_u = L.getPrincipal(users, arg.main_owner, RBTree.empty());
@@ -611,7 +609,7 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func icrc_acct_ns__names(args : [ICRC1T.Account]) : async T.NamesOfRes {
+  public shared query func icrc_ans_names(args : [ICRC1T.Account]) : async T.NamesOfRes {
     let max_take = Nat.min(args.size(), env.max_query_batch_size);
     let buff = Buffer.Buffer<T.Name>(max_take);
     label finding for (arg in args.vals()) {
@@ -628,54 +626,54 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func icrc_acct_ns__operators(arg : T.OperatorsOfArg) : async T.OperatorsOfRes {
-    let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
-    let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
-    let main_sub = Subaccount.get(arg.main.subaccount);
-    let main = L.getBlob(main_u, main_sub, L.initMain());
-    {
-      total = RBTree.size(main.operators);
-      results = RBTree.pageKey(main.operators, Principal.compare, arg.previous, max_take);
-      callbacks = [];
-    };
-  };
+  // public shared query func icrc_ans_operators(arg : T.OperatorsOfArg) : async T.OperatorsOfRes {
+  //   let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
+  //   let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
+  //   let main_sub = Subaccount.get(arg.main.subaccount);
+  //   let main = L.getBlob(main_u, main_sub, L.initMain());
+  //   {
+  //     total = RBTree.size(main.operators);
+  //     results = RBTree.pageKey(main.operators, Principal.compare, arg.previous, max_take);
+  //     callbacks = [];
+  //   };
+  // };
 
-  public shared query func icrc_acct_ns__operator_subaccounts(arg : T.OperatorSubsOfArg) : async T.OperatorSubsOfRes {
-    let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
-    let buf = Buffer.Buffer<Blob>(max_take);
-    let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
-    let main_sub = Subaccount.get(arg.main.subaccount);
-    let main = L.getBlob(main_u, main_sub, L.initMain());
-    let operator = L.getPrincipal(main.operators, arg.operator_owner, RBTree.empty());
-    for ((k, v) in RBTree.range(operator, Blob.compare, arg.previous, max_take)) buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k);
-    {
-      total = RBTree.size(operator);
-      results = Buffer.toArray(buf);
-      callbacks = [];
-    };
-  };
+  // public shared query func icrc_ans_operator_subaccounts(arg : T.OperatorSubsOfArg) : async T.OperatorSubsOfRes {
+  //   let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
+  //   let buf = Buffer.Buffer<Blob>(max_take);
+  //   let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
+  //   let main_sub = Subaccount.get(arg.main.subaccount);
+  //   let main = L.getBlob(main_u, main_sub, L.initMain());
+  //   let operator = L.getPrincipal(main.operators, arg.operator_owner, RBTree.empty());
+  //   for ((k, v) in RBTree.range(operator, Blob.compare, arg.previous, max_take)) buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k);
+  //   {
+  //     total = RBTree.size(operator);
+  //     results = Buffer.toArray(buf);
+  //     callbacks = [];
+  //   };
+  // };
 
-  public shared query func icrc_acct_ns__approvals(args : [T.ApprovalOfArg]) : async T.ApprovalsOfRes {
-    let max_take = Nat.min(args.size(), env.max_query_batch_size);
-    let buff = Buffer.Buffer<Nat64>(max_take);
-    label finding for (arg in args.vals()) {
-      if (buff.size() >= max_take) break finding;
-      let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
-      let main_sub = Subaccount.get(arg.main.subaccount);
-      let main = L.getBlob(main_u, main_sub, L.initMain());
-      let operator = L.getPrincipal(main.operators, arg.operator.owner, RBTree.empty());
-      let operator_sub = Subaccount.get(arg.operator.subaccount);
-      let expires_at = L.getBlob(operator, operator_sub, 0 : Nat64);
-      buff.add(expires_at);
-    };
-    {
-      total = RBTree.size(users);
-      results = Buffer.toArray(buff);
-      callbacks = [];
-    };
-  };
+  // public shared query func icrc_ans_approvals(args : [T.ApprovalOfArg]) : async T.ApprovalsOfRes {
+  //   let max_take = Nat.min(args.size(), env.max_query_batch_size);
+  //   let buff = Buffer.Buffer<Nat64>(max_take);
+  //   label finding for (arg in args.vals()) {
+  //     if (buff.size() >= max_take) break finding;
+  //     let main_u = L.getPrincipal(users, arg.main.owner, RBTree.empty());
+  //     let main_sub = Subaccount.get(arg.main.subaccount);
+  //     let main = L.getBlob(main_u, main_sub, L.initMain());
+  //     let operator = L.getPrincipal(main.operators, arg.operator.owner, RBTree.empty());
+  //     let operator_sub = Subaccount.get(arg.operator.subaccount);
+  //     let expires_at = L.getBlob(operator, operator_sub, 0 : Nat64);
+  //     buff.add(expires_at);
+  //   };
+  //   {
+  //     total = RBTree.size(users);
+  //     results = Buffer.toArray(buff);
+  //     callbacks = [];
+  //   };
+  // };
 
-  public shared query func icrc_acct_ns__accounts(args : [Text]) : async T.AccountsOfRes {
+  public shared query func icrc_ans_accounts(args : [Text]) : async T.AccountsOfRes {
     let max_take = Nat.min(args.size(), env.max_query_batch_size);
     let buff = Buffer.Buffer<?ICRC1T.Account>(max_take);
     label finding for (arg in args.vals()) {
@@ -693,7 +691,7 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func icrc_acct_ns__proxy_subaccounts(arg : T.ProxySubsOfArg) : async T.ProxySubsOfRes {
+  public shared query func icrc_ans_proxy_subaccounts(arg : T.ProxySubsOfArg) : async T.ProxySubsOfRes {
     let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
     let buf = Buffer.Buffer<Blob>(max_take);
     let proxy_ptr = L.getPrincipal(proxies, arg.proxy_owner, RBTree.empty());
@@ -705,22 +703,29 @@ shared (install) persistent actor class Canister(
     };
   };
 
-  public shared query func icrc_acct_ns__mains(args : [ICRC1T.Account]) : async T.MainsOfRes {
-    let max_take = Nat.min(args.size(), env.max_query_batch_size);
-    let buff = Buffer.Buffer<?ICRC1T.Account>(max_take);
-    label finding for (arg in args.vals()) {
-      if (buff.size() >= max_take) break finding;
-      let proxy_ptr = L.getPrincipal(proxies, arg.owner, RBTree.empty());
-      let proxy_sub = Subaccount.get(arg.subaccount);
-      let main = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
-        case (?(owner, sub, expiry)) (?{ owner; subaccount = Subaccount.opt(sub) });
-        case _ null;
-      };
-      buff.add(main);
-    };
+  public shared query func icrc_ans_mains(arg : T.MainsOfArg) : async T.MainsOfRes {
+    let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
+    let proxy_ptr = L.getPrincipal(proxies, arg.proxy.owner, RBTree.empty());
+    let proxy_sub = Subaccount.get(arg.proxy.subaccount);
+    let mains = L.getBlob(proxy_ptr, proxy_sub, RBTree.empty());
     {
-      total = RBTree.size(proxies);
-      results = Buffer.toArray(buff);
+      total = RBTree.size(mains);
+      results = RBTree.pageKey(mains, Principal.compare, arg.previous, max_take);
+      callbacks = [];
+    };
+  };
+
+  public shared query func icrc_ans_main_subaccounts(arg : T.MainSubsOfArg) : async T.MainSubsOfRes {
+    let max_take = Nat.min(Option.get(arg.take, env.max_take_value), env.max_take_value);
+    let buf = Buffer.Buffer<Blob>(max_take);
+    let proxy_ptr = L.getPrincipal(proxies, arg.proxy.owner, RBTree.empty());
+    let proxy_sub = Subaccount.get(arg.proxy.subaccount);
+    let mains = L.getBlob(proxy_ptr, proxy_sub, RBTree.empty());
+    let main_subs = L.getPrincipal(mains, arg.main_owner, RBTree.empty());
+    for ((k, v) in RBTree.range(main_subs, Blob.compare, arg.previous, max_take)) buf.add(if (k.size() == 0) Blob.fromArray(Subaccount.DEFAULT) else k);
+    {
+      total = RBTree.size(main_subs);
+      results = Buffer.toArray(buf);
       callbacks = [];
     };
   };
@@ -728,7 +733,7 @@ shared (install) persistent actor class Canister(
   func newBlock(block_id : Nat, val : Value.Type) {
     let valh = Value.hash(val);
     let idh = Blob.fromArray(LEB128.toUnsignedBytes(block_id));
-    blocks := RBTree.insert(blocks, Nat.compare, block_id, { val; valh; idh; locked = false });
+    blocks := RBTree.insert(blocks, Nat.compare, block_id, { val; valh; idh; locked_until = 0 : Nat64 });
 
     tip_cert := MerkleTree.empty();
     tip_cert := MerkleTree.put(tip_cert, [Text.encodeUtf8(ICRC3T.LAST_BLOCK_INDEX)], idh);
@@ -780,13 +785,16 @@ shared (install) persistent actor class Canister(
         case (?found) found;
         case _ continue trimming;
       };
-      names := RBTree.delete(names, Text.compare, name);
-
       var main_u = L.getPrincipal(users, main_p, RBTree.empty());
       var main = L.getBlob(main_u, main_sub, L.initMain());
-      if (main.name == "" or main.expires_at < now) {
-        main := { main with name = ""; expires_at = 0; locked_until = 0 };
+      if (main.locked_until > now) break trimming;
+      if (main.name == "" or main.expires_at < now) main := {
+        main with name = "";
+        expires_at = 0;
+        locked_until = 0;
       };
+
+      names := RBTree.delete(names, Text.compare, name);
       name_expiries := if (main.expires_at > 0) {
         names := RBTree.insert(names, Text.compare, main.name, (main_p, main_sub));
         RBTree.insert(name_expiries, L.compareNameExpiry, (main.expires_at, main.name), ());
@@ -821,27 +829,30 @@ shared (install) persistent actor class Canister(
       users := L.savePrincipal(users, from_p, main_u, RBTree.size(main_u) > 0);
     };
     label trimming while (round < max_round) {
-      let (exp_t, proxy_p, proxy_sub) = switch (RBTree.minKey(proxy_expiries)) {
+      let (exp_t, (proxy_p, proxy_sub), (main_p, main_sub)) = switch (RBTree.minKey(proxy_expiries)) {
         case (?found) found;
         case _ break trimming;
       };
       if (exp_t >= now) break trimming;
       round += 1;
-      proxy_expiries := RBTree.delete(proxy_expiries, L.compareProxyExpiry, (exp_t, proxy_p, proxy_sub));
+
+      var main_u = L.getPrincipal(users, main_p, RBTree.empty());
+      var main = L.getBlob(main_u, main_sub, L.initMain());
+      if (main.locked_until > now) break trimming;
+
+      proxy_expiries := RBTree.delete(proxy_expiries, L.compareProxyExpiry, (exp_t, (proxy_p, proxy_sub), (main_p, main_sub)));
+      if (main.name == "" or main.expires_at < now) {
+        proxy_expiries := RBTree.delete(proxy_expiries, L.compareProxyExpiry, (main.expires_at, (proxy_p, proxy_sub), (main_p, main_sub)));
+        main := { main with name = ""; expires_at = 0; locked_until = 0 };
+      };
+      if (main.expires_at > 0) proxy_expiries := RBTree.insert(proxy_expiries, L.compareProxyExpiry, (main.expires_at, (proxy_p, proxy_sub), (main_p, main_sub)), ());
 
       var proxy_ptr = L.getPrincipal(proxies, proxy_p, RBTree.empty());
-      let (from_p, from_sub, proxy_expiry) = switch (RBTree.get(proxy_ptr, Blob.compare, proxy_sub)) {
-        case (?found) found;
-        case _ continue trimming;
-      };
-      let is_expired = proxy_expiry < now;
-      proxy_expiries := if (is_expired) {
-        proxy_ptr := RBTree.delete(proxy_ptr, Blob.compare, proxy_sub);
-        RBTree.delete(proxy_expiries, L.compareProxyExpiry, (proxy_expiry, proxy_p, proxy_sub));
-      } else {
-        proxy_ptr := RBTree.insert(proxy_ptr, Blob.compare, proxy_sub, (from_p, from_sub, proxy_expiry));
-        RBTree.insert(proxy_expiries, L.compareProxyExpiry, (proxy_expiry, proxy_p, proxy_sub), ());
-      };
+      var proxysub_ptr = L.getBlob(proxy_ptr, proxy_sub, RBTree.empty());
+      var main_ptr = L.getPrincipal(proxysub_ptr, main_p, RBTree.empty());
+      main_ptr := L.saveBlob(main_ptr, main_sub, (), main.expires_at > 0);
+      proxysub_ptr := L.savePrincipal(proxysub_ptr, main_p, main_ptr, RBTree.size(main_ptr) > 0);
+      proxy_ptr := L.saveBlob(proxy_ptr, proxy_sub, proxysub_ptr, RBTree.size(proxysub_ptr) > 0);
       proxies := L.savePrincipal(proxies, proxy_p, proxy_ptr, RBTree.size(proxy_ptr) > 0);
     };
     label trimming while (round < max_round) {

@@ -4,7 +4,7 @@ export function nano2date(ns) {
 	return new Date(ms);
 }
 
-export function date2nano() {
-	const time = BigInt(new Date().getTime()) * 1000000n
+export function date2nano(date = new Date()) {
+	const time = BigInt(date.getTime()) * 1000000n
 	return time;
 }

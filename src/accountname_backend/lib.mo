@@ -94,16 +94,24 @@ module {
 		#equal;
 	};
 
-	public func compareProxyExpiry((at : Nat64, ap : Principal, as : Blob), (bt : Nat64, bp : Principal, bs : Blob)) : Order.Order {
+	public func compareProxyExpiry((at : Nat64, (a_proxy_p : Principal, a_proxy_s : Blob), (a_main_p: Principal, a_main_s: Blob)), (bt : Nat64, (b_proxy_p : Principal, b_proxy_s : Blob), (b_main_p: Principal, b_main_s: Blob))) : Order.Order {
 		switch (Nat64.compare(at, bt)) {
 			case (#equal) ();
 			case other return other;
 		};
-		switch (Principal.compare(ap, bp)) {
+		switch (Principal.compare(a_proxy_p, b_proxy_p)) {
 			case (#equal) ();
 			case other return other;
 		};
-		switch (Blob.compare(as, bs)) {
+		switch (Blob.compare(a_proxy_s, b_proxy_s)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Principal.compare(a_main_p, b_main_p)) {
+			case (#equal) ();
+			case other return other;
+		};
+		switch (Blob.compare(a_main_s, b_main_s)) {
 			case (#equal) ();
 			case other return other;
 		};

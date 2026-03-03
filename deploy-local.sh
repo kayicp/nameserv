@@ -45,50 +45,39 @@ dfx deploy accountname_backend --no-wallet --specified-id $NAMER_ID --argument "
           toll = 7_200_000_000_000;
           max_expiry = 2_592_000_000_000_000;
         };
-        price_tiers = vec {
+        length_tiers = vec {
           record {
-            length = record { min = 1; max = 1 };
-            tcycles_fee_multiplier = 10_000_000;
+            min = 1; max = 1; tcycles_fee_multiplier = 10_000_000;
           };
           record {
-            length = record { min = 2; max = 2 };
-            tcycles_fee_multiplier = 5_000_000;
+            min = 2; max = 2; tcycles_fee_multiplier = 5_000_000;
           };
           record {
-            length = record { min = 3; max = 3 };
-            tcycles_fee_multiplier = 2_500_000;
+            min = 3; max = 3; tcycles_fee_multiplier = 2_500_000;
           };
           record {
-            length = record { min = 4; max = 4 };
-            tcycles_fee_multiplier = 1_000_000;
+            min = 4; max = 4; tcycles_fee_multiplier = 1_000_000;
           };
           record {
-            length = record { min = 5; max = 5 };
-            tcycles_fee_multiplier = 500_000;
+            min = 5; max = 5; tcycles_fee_multiplier = 500_000;
           };
           record {
-            length = record { min = 6; max = 6 };
-            tcycles_fee_multiplier = 250_000;
+            min = 6; max = 6; tcycles_fee_multiplier = 250_000;
           };
           record {
-            length = record { min = 7; max = 7 };
-            tcycles_fee_multiplier = 100_000;
+            min = 7; max = 7; tcycles_fee_multiplier = 100_000;
           };
           record {
-            length = record { min = 8; max = 8 };
-            tcycles_fee_multiplier = 50_000;
+            min = 8; max = 8; tcycles_fee_multiplier = 50_000;
           };
           record {
-            length = record { min = 9; max = 9 };
-            tcycles_fee_multiplier = 20_000;
+            min = 9; max = 9; tcycles_fee_multiplier = 20_000;
           };
           record {
-            length = record { min = 10; max = 19 };
-            tcycles_fee_multiplier = 10_000;
+            min = 10; max = 19; tcycles_fee_multiplier = 10_000;
           };
           record {
-            length = record { min = 20; max = 32 };
-            tcycles_fee_multiplier = 5_000;
+            min = 20; max = 32; tcycles_fee_multiplier = 5_000;
           };
         };
       };

@@ -11,7 +11,8 @@ module {
 	public let NUMS = (['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
 
 	public type PriceTier = {
-		length : { min : Nat; max : Nat };
+		min : Nat;
+		max : Nat;
 		tcycles_fee_multiplier : Nat;
 	};
 	public type DurationPackage = { years_base : Nat; months_bonus : Nat };
@@ -27,7 +28,7 @@ module {
 		max_query_batch_size : Nat;
 		max_take_value : Nat;
 		name : {
-			price_tiers : [PriceTier];
+			length_tiers : [PriceTier];
 			duration : {
 				max_expiry : Nat64;
 				toll : Nat64;
@@ -46,7 +47,7 @@ module {
 	public type Xccount = { owner : Principal; sub : Blob };
 	public type Subs<T> = RBTree.Type<Blob, T>;
 	public type Accounts<T> = RBTree.Type<Principal, Subs<T>>;
-	public type Nats<T> = RBTree.Type<Nat, T>;
+	public type Nats<T> = RBTree.Type<{ block_index : Nat }, T>;
 	public type Name = { name : Text; expires_at : Nat64 };
 	public type Main = {
 		name : Text;
@@ -55,7 +56,9 @@ module {
 		operators : Accounts<(expires_at : Nat64)>;
 	};
 	public type User = RBTree.Type<(sub : Blob), Main>;
-	public type Proxy = RBTree.Type<(sub : Blob), (main_p : Principal, main_sub : Blob, expires_at : Nat64)>;
+	public type MainSubPtr = RBTree.Type<Blob, ()>;
+	public type MainPtr = RBTree.Type<Principal, MainSubPtr>;
+	public type Proxy = RBTree.Type<(sub : Blob), MainPtr>;
 
 	public type RegisterArg = {
 		proxy_subaccount : ?Blob; //
@@ -94,7 +97,7 @@ module {
 		#Duplicate : { of : Nat };
 		#TransferFailed : Linker.TransferFrom1Err;
 	};
-	public type RegisterRes = Result.Type<Nat, RegisterErr>;
+	public type RegisterRes = Result.Type<{ block_index : Nat; main : ICRC1T.Account }, RegisterErr>;
 
 	public type TransferArg = {
 		proxy_subaccount : ?Blob; //
@@ -111,7 +114,7 @@ module {
 		#InsufficientTime : { remaining : Nat64 };
 		#BadTimeToll : { expected_time_toll : Nat64 };
 	};
-	public type TransferRes = Result.Type<Nat, TransferErr>;
+	public type TransferRes = Result.Type<{ block_index : Nat }, TransferErr>;
 
 	public type ApproveArg = {
 		proxy_subaccount : ?Blob; //
@@ -134,7 +137,7 @@ module {
 		#TooOld;
 		#Duplicate : { of : Nat };
 	};
-	public type ApproveRes = Result.Type<Nat, ApproveErr>;
+	public type ApproveRes = Result.Type<{ block_index : Nat }, ApproveErr>;
 
 	public type RevokeArg = {
 		proxy_subaccount : ?Blob;
@@ -151,7 +154,7 @@ module {
 		#BadTimeToll : { expected_time_toll : Nat64 };
 		#UnknownOperator;
 	};
-	public type RevokeRes = Result.Type<Nat, RevokeErr>;
+	public type RevokeRes = Result.Type<{ block_index : Nat }, RevokeErr>;
 
 	public type TransferFromArg = {
 		operator_subaccount : ?Blob; //
@@ -170,7 +173,7 @@ module {
 		#BadTimeToll : { expected_time_toll : Nat64 };
 		#UnknownOperator;
 	};
-	public type TransferFromRes = Result.Type<Nat, TransferFromErr>;
+	public type TransferFromRes = Result.Type<{ block_index : Nat }, TransferFromErr>;
 
 	public type ArgType = {
 		#Register : RegisterArg;
@@ -221,7 +224,20 @@ module {
 	};
 	public type ProxySubsOfRes = BatchQuery<ProxySubsOfArg, shared query ProxySubsOfArg -> async ProxySubsOfRes, Blob>;
 
-	public type MainsOfRes = BatchQuery<[ICRC1T.Account], shared query [ICRC1T.Account] -> async MainsOfRes, ?ICRC1T.Account>;
+	public type MainsOfArg = {
+		proxy : ICRC1T.Account;
+		previous : ?Principal;
+		take : ?Nat;
+	};
+	public type MainsOfRes = BatchQuery<MainsOfArg, shared query MainsOfArg -> async MainsOfRes, Principal>;
+
+	public type MainSubsOfArg = {
+		proxy : ICRC1T.Account;
+		main_owner : Principal;
+		previous : ?Blob;
+		take : ?Nat;
+	};
+	public type MainSubsOfRes = BatchQuery<MainSubsOfArg, shared query MainSubsOfArg -> async MainSubsOfRes, Blob>;
 
 	public type AccountsOfRes = BatchQuery<[Text], shared query [Text] -> async AccountsOfRes, ?ICRC1T.Account>;
 };
