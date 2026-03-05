@@ -45,7 +45,7 @@ export default class Register {
 		this.linker.link = { main_p: null, allowance: 0n, expires_at: 0n };
 	}
 
-	_refresh() {
+	async _refresh(_register = false) {
 		const t = this.namer.length_tiers.find(
 			t => this.namer.name_str.length >= t.min && this.namer.name_str.length <= t.max
 		);
@@ -55,22 +55,36 @@ export default class Register {
 		const raw = BigInt(t.tcycles_fee_multiplier) * this.tcycles_token.fee * BigInt(p.years_base);
 		const price = this.namer.pay_with_icp ? this.cmc.icp(raw) : raw;
 		if (this.namer.selected_renew_main_p != null)
-			this.linker.getLink(this.namer.selected_renew_main_p, this.namer.pay_with_icp);
+			await this.linker.getLink(this.namer.selected_renew_main_p, this.namer.pay_with_icp);
 		else
-			this.linker.filterLinks(price, this.namer.pay_with_icp);
+			await this.linker.filterLinks(price, this.namer.pay_with_icp);
+		
+		if (_register) {
+			const pay_token = this.namer.pay_with_icp? this.icp_token : this.tcycles_token;
+			const selected_main_p = this.namer.selected_renew_main_p || this.namer.selected_register_main_p;
+			if (selected_main_p == null) return;
+			const total_days = BigInt(p.years_base) * 365n + BigInt(p.months_bonus) * 30n;
+			this.namer.register(price, pay_token, selected_main_p, total_days);
+		};
 	}
 
 	_openIILink(mainPrincipal, pay_token, effective_price) {
-		const params = new URLSearchParams({
+		const iiNameParams = new URLSearchParams({
+			name: this.namer.name_str,
+			duration_index: this.selected_duration_idx,
+			token: pay_token.id,
+		});
+		const cb = `${window.location.origin}/register?${iiNameParams.toString()}`;
+		const iiLinkParams = new URLSearchParams({
 			token: pay_token.id,
 			spender: this.namer.id,
 			proxy: this.wallet.principal.toText(),
 			amount: pay_token.cleaner(effective_price + pay_token.fee),
 			expiry_unit: 'days',
 			expiry_amount: 1,
+			callback: cb,
 		});
-		if (mainPrincipal) params.set('main', mainPrincipal.toText());
-		window.open(`${iilink_origin}/links/new?${params.toString()}`, '_blank', 'noopener,noreferrer');
+		window.location.href = `${iilink_origin}/links/new?${iiLinkParams.toString()}`;
 	}
 
 	render() {
@@ -80,6 +94,31 @@ export default class Register {
 				Loading naming service…
 			</div>
 		`;
+
+		const urlParams = new URLSearchParams(window.location.search);
+		const paramName = urlParams.get('name');
+		if (paramName != null) {
+			this.namer.name_str = paramName;
+			this.selected_duration_idx = Number(urlParams.get('duration_index')) || 0;
+			const paramToken = urlParams.get('token') || this.tcycles_token.id;
+			this.namer.pay_with_icp = paramToken == this.icp_token.id;
+			try {
+				this.namer.selected_renew_main_p = Principal.fromText(urlParams.get('main'));
+			} catch (cause) { 
+				this.namer.selected_renew_main_p = null;
+			}
+			this.namer.selected_register_main_p = this.namer.selected_renew_main_p;
+			(async () => {
+				await this.namer.get();
+				await this.namer.validateName(
+					(mp, pwi) => this.linker.getLink(mp, pwi)
+				);
+				if (this.namer.name_str_sub.startsWith('Ok:')
+					&& !this.namer.name_str_sub.startsWith('Ok: You'))
+					this._refresh(true);
+			})();
+			return window.history.replaceState({}, '', Register.PATH);
+		};
 
 		const max_len = this.namer.length_tiers[this.namer.length_tiers.length - 1].max;
 		const len = this.namer.name_str.length;
