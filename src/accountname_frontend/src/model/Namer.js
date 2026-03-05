@@ -7,6 +7,7 @@ import { Principal } from '@dfinity/principal';
 import { AccountIdentifier } from '@dfinity/ledger-icp';
 import { nano2date } from '../../../util/js/bigint';
 
+// Namer.js
 export default class Namer {
 	service_provider = null;
 	get_busy = false;
@@ -19,9 +20,9 @@ export default class Namer {
 
 	name_str = '';
 	name_str_sub = '';
-	selected_year_idx = 0;
 	selected_renew_main_p = null;
 	selected_register_main_p = null;
+	name_a = null;
 	pay_with_icp = false;
 	selected_year_idx = 0;
 
@@ -57,10 +58,11 @@ export default class Namer {
 			}
 		} catch (cause) {
 			this.get_busy = false;
+			this.render();
 			return this.notif.errorToast(`Namer ${shortPrincipal(this.id_p)} Meta Failed`, cause);
 		}
 		const proxy_a = { owner: this.wallet.principal, subaccount: [] };
-		if (proxy_a.owner == null) return this.get_busy = false;
+		if (proxy_a.owner == null) { this.get_busy = false; return; }
 
 		const mains = new Map();
 		let prev_main = [];
@@ -72,16 +74,12 @@ export default class Namer {
 				for (const main_p of mains_res.results) {
 					prev_main = [main_p];
 					const main_p_txt = main_p.toText();
-					mains.set(main_p_txt, {
-						p: main_p,
-						name: '',
-						expires_at: 0n,
-					});
+					mains.set(main_p_txt, { p: main_p, name: '', expires_at: 0n });
 					name_args.push({ owner: main_p, subaccount: [] });
 				}
 			}
 		} catch (cause) {
-			this.notif.errorToast(`Get mains failed ${{ prev_main }}`, cause);
+			this.notif.errorToast('Failed to load principals', cause);
 		}
 		try {
 			while (name_args.length > 0) {
@@ -98,68 +96,66 @@ export default class Namer {
 				}
 			}
 		} catch (cause) {
-			this.notif.errorToast(`Get names failed`, cause);
+			this.notif.errorToast('Failed to load names', cause);
 		}
 		this.get_busy = false;
 		this.mains.clear();
 		this.mains = mains;
 		this.render();
-	};
+	}
 
 	async validateName(getLink) {
 		this.selected_renew_main_p = null;
+		this.name_a = null;
 		this.name_str_sub = '';
-    this.name_str = this.name_str.trim();
-    if (this.name_str.length == 0) {
+		this.name_str = this.name_str.trim();
+
+		if (this.name_str.length == 0) {
 			this.name_str_sub = 'Error: Name cannot be empty';
 			return this.render();
 		}
-    if (this.length_tiers.length == 0) {
-			this.name_str_sub = 'Error: No max length';
+		if (this.length_tiers.length == 0) {
+			this.name_str_sub = 'Error: No max length configured';
 			return this.render();
-		};
-    const max_len = this.length_tiers[this.length_tiers.length - 1].max;
-    if (this.name_str.length > max_len) {
-			this.name_str_sub = `Error: Too long. Max length: ${max_len}`;
+		}
+		const max_len = this.length_tiers[this.length_tiers.length - 1].max;
+		if (this.name_str.length > max_len) {
+			this.name_str_sub = `Error: Too long — max ${max_len} characters`;
 			return this.render();
-		} 
+		}
 
-    const chars = 'abcdefghijklmnopqrstuvwxyz';
-    const nums = '0123456789';
-    let lastUnderscore = false;
+		const chars = 'abcdefghijklmnopqrstuvwxyz';
+		const nums = '0123456789';
+		let lastUnderscore = false;
 
-    for (let i = 0; i < this.name_str.length; i++) {
+		for (let i = 0; i < this.name_str.length; i++) {
 			const c = this.name_str[i];
-			if (chars.includes(c)) {
-				lastUnderscore = false;
-				continue;
-			}
+			if (chars.includes(c)) { lastUnderscore = false; continue; }
 			if (i === 0) {
-				this.name_str_sub = 'Error: First character must be small alphabets (a-z)';
+				this.name_str_sub = 'Error: Must start with a lowercase letter (a–z)';
 				return this.render();
 			}
-			if (nums.includes(c)) {
-				lastUnderscore = false;
-				continue;
-			}
+			if (nums.includes(c)) { lastUnderscore = false; continue; }
 			if (c === '_') {
 				if (lastUnderscore) {
-					this.name_str_sub = 'Error: Consecutive underscores are not allowed';
+					this.name_str_sub = 'Error: No consecutive underscores allowed';
 					return this.render();
 				}
 				lastUnderscore = true;
 				continue;
 			}
-			this.name_str_sub = 'Error: Only small alphabets (a-z), numbers (0-9), and underscores (_) are allowed';
+			this.name_str_sub = 'Error: Only lowercase letters, digits, and underscores allowed';
 			return this.render();
-    }
-    if (lastUnderscore) {
-			this.name_str_sub = 'Error: Name cannot end with an underscore';
+		}
+		if (lastUnderscore) {
+			this.name_str_sub = 'Error: Cannot end with an underscore';
 			return this.render();
-    }
+		}
+
 		this.check_busy = true;
-		this.name_str_sub = 'Fetching the name owner...';
+		this.name_str_sub = 'Checking availability…';
 		this.render();
+
 		try {
 			const accounts_res = await this.anon.icrc_ans_accounts([this.name_str]);
 			const acct_opt = accounts_res.results[0];
@@ -174,58 +170,61 @@ export default class Namer {
 					const now = new Date();
 					if (main.name.length == 0 || name_expiry < now) {
 						this.name_str_sub = 'Ok: Name is available';
+					} else if (main.name == this.name_str) {
+						this.name_a = main_a;
+						const half_day = 12 * 60 * 60 * 1000;
+						const diff = name_expiry.getTime() - now.getTime();
+						const isYours = this.mains.has(main_a.owner.toText());
+						const expiryStr = diff < half_day ? name_expiry.toLocaleTimeString() : name_expiry.toLocaleDateString();
+						const subaccountNote = main_a.subaccount.length > 0 ? ' (via subaccount)' : '';
+						this.name_str_sub = `${isYours ? 'Ok: You' : 'Someone else'} (${shortPrincipal(main_a.owner)})${subaccountNote} own this name until ${expiryStr}`;
 					} else {
-						if (main.name == this.name_str) {
-							const half_day = 12 * 60 * 60 * 1000; 
-							const diff = name_expiry.getTime() - now.getTime();
-							this.name_str_sub = `${this.mains.has(main_a.owner.toText())? 'Ok: You' : 'Someone else'} (${shortPrincipal(main_a.owner)}) ${main_a.subaccount.length == 0? '' : `(by a subaccount)`} own this name until ${diff < half_day? name_expiry.toLocaleTimeString() : name_expiry.toLocaleDateString()}`;
-						} else {
-							this.name_str_sub = 'Ok: Name is available';
-						}
-					};
+						this.name_str_sub = 'Ok: Name is available';
+					}
 				} catch (cause) {
 					const message = cause instanceof Error ? cause.message : String(cause);
-					this.name_str_sub = `Error: Integrity check failed - ${message}`;			
+					this.name_str_sub = `Error: Integrity check failed — ${message}`;
 				}
 			}
 			if (this.name_str_sub.startsWith('Ok: You') && main_a.subaccount.length == 0) {
 				this.selected_renew_main_p = main_a.owner;
-				getLink(main_a.owner, this.pay_with_icp);
-			};
+				if (getLink) getLink(main_a.owner, this.pay_with_icp);
+			}
+			this.name_a = main_a;
 		} catch (cause) {
 			const message = cause instanceof Error ? cause.message : String(cause);
-			this.name_str_sub = `Error: Fetching name owner failed - ${message}`;
+			this.name_str_sub = `Error: Lookup failed — ${message}`;
 		}
 		this.check_busy = false;
 		this.render();
 	}
 
 	async register(amount, token, main_p, total_days) {
-    this.notif.confirmPopup(
-        'Confirm register name',
-        html`
-            <div class="space-y-2 text-sm">
-                <div class="flex justify-between gap-4">
-                    <span class="text-slate-400">Name</span>
-                    <span class="font-mono text-slate-100 break-all text-right">${this.name_str}</span>
-                </div>
-                <div class="flex justify-between gap-4">
-                    <span class="text-slate-400">Main</span>
-                    <span class="font-mono text-slate-100 text-xs">${shortPrincipal(main_p)}</span>
-                </div>
-                <div class="flex justify-between gap-4">
-                    <span class="text-slate-400">Duration</span>
-                    <span class="text-slate-100">${total_days} days</span>
-                </div>
-                <div class="flex justify-between gap-4 pt-2 border-t border-slate-700/50">
-                    <span class="text-slate-400">Cost</span>
-                    <span class="font-mono text-slate-100">${token.cleaner(amount)} ${token.symbol}</span>
-                </div>
-            </div>
-        `,
-        [{
-					label: 'Confirm register',
-					onClick: async () => {
+		this.notif.confirmPopup(
+			'Confirm name registration',
+			html`
+				<div class="space-y-3 text-xs text-slate-300">
+					<div>
+						<div class="text-slate-400">Name</div>
+						<div class="font-mono text-slate-100">${this.name_str}</div>
+					</div>
+					<div>
+						<div class="text-slate-400">Linked principal</div>
+						<div class="font-mono text-slate-100">${shortPrincipal(main_p)}</div>
+					</div>
+					<div>
+						<div class="text-slate-400">Duration</div>
+						<div class="text-slate-100">${total_days} days</div>
+					</div>
+					<div class="pt-2 border-t border-slate-700/60">
+						<div class="text-slate-400">Cost</div>
+						<div class="font-mono text-slate-100">${token.cleaner(amount)} ${token.symbol}</div>
+					</div>
+				</div>
+			`,
+			[{
+				label: 'Confirm',
+				onClick: async () => {
 					this.busy = true;
 					this.render();
 					try {
@@ -240,22 +239,23 @@ export default class Namer {
 							created_at: [],
 						});
 						this.busy = false;
+						this.render();
 						if ('Err' in res) {
 							let msg = JSON.stringify(res.Err);
-							if ('GenericError' in res.Err) {
-								msg = res.Err.GenericError.message;
-							};
-							this.notif.errorPopup(`Register Error`, msg);
+							if ('GenericError' in res.Err) msg = res.Err.GenericError.message;
+							this.notif.errorPopup('Registration Error', msg);
 						} else {
 							this.name_str_sub = '';
 							this.get();
-							this.notif.successToast('Register OK', res.Ok);
+							this.notif.successToast('Registration OK', res.Ok);
 						}
 					} catch (cause) {
 						this.busy = false;
-						this.notif.errorToast(`Register Failed`, cause);
+						this.render();
+						this.notif.errorToast('Registration Failed', cause);
 					}
 				}
-			}])
+			}]
+		);
 	}
-};
+}

@@ -21,6 +21,9 @@ export default class Token {
 
 	get_busy = false;
 	busy = false;
+	
+	profile_balance = null;
+	profile_balance_busy = false;
 
 	constructor(p_txt, wallet, symbol = null) {
 		this.id = p_txt;
@@ -53,6 +56,7 @@ export default class Token {
 
 	async get() {
 		this.get_busy = true;
+		this.render();
 		try {
 			if (this.anon == null) this.anon = await genActor(idlFactory, this.id);
 			if (this.power == null) {
@@ -72,6 +76,19 @@ export default class Token {
 		} catch (cause) {
 			this.get_busy = false;
 			return this.notif.errorToast(`Token ${shortPrincipal(this.id_p)} Meta Failed`, cause);
+		};
+	}
+
+	async getBalance(account) {
+		this.profile_balance_busy = true;
+		this.render();
+		try {
+			this.profile_balance = await this.anon.icrc1_balance_of(account);
+			this.profile_balance_busy = false;
+			this.render();
+		} catch (cause) {
+			this.profile_balance_busy = false;
+			return this.notif.errorToast(`${this.symbol} Balance Failed`, cause);
 		};
 	}
 

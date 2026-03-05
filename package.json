@@ -16,6 +16,7 @@
     "src/accountname_frontend"
   ],
   "dependencies": {
+    "@dfinity/ledger-icrc": "^7.1.0",
     "@icp-sdk/auth": "^5.0.0",
     "@icp-sdk/core": "^5.0.0",
     "@tailwindcss/cli": "^4.1.18",

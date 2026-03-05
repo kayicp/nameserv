@@ -7,16 +7,13 @@ import { html } from 'lit-html';
 import { duration2nano } from '../../../util/js/duration';
 import { date2nano } from '../../../util/js/bigint';
 
+// linker.js (Namer's linker integration)
 export default class Linker {
 	get_busy = false;
 	filter_links_busy = false;
 	get_link_busy = false;
 
-	link = {
-		main_p: null,
-		allowance: 0n,
-		expires_at: 0n,
-	};
+	link = { main_p: null, allowance: 0n, expires_at: 0n };
 	filters = new Map();
 
 	constructor(p_txt, wallet, icp_token, tcycles_token, namer_p) {
@@ -39,56 +36,60 @@ export default class Linker {
 		this.get_busy = true;
 		try {
 			if (this.anon == null) this.anon = await genActor(idlFactory, this.id);
-			const namer_a = { owner : this.namer_p, subaccount: [] };
+			const namer_a = { owner: this.namer_p, subaccount: [] };
 			const credits = await this.anon.iilink_credits([namer_a]);
 			this.namer_credits = credits.results[0];
 			this.get_busy = false;
 			this.render();
 		} catch (cause) {
 			this.get_busy = false;
-			this.notif.errorToast(`Get namer credits failed`, cause);
+			this.render();
+			this.notif.errorToast('Failed to load namer credits', cause);
 		}
 	}
 
 	async getLink(main_p, pay_with_icp) {
 		this.get_link_busy = true;
-		const proxy = { owner : this.wallet.principal, subaccount: [] }
+		this.render();
+		const proxy = { owner: this.wallet.principal, subaccount: [] };
 		if (proxy.owner == null) {
 			this.link = { main_p: null, allowance: 0n, expires_at: 0n };
+			this.get_link_busy = false;
 			this.render();
-		} else {
-			const spender = { owner : this.namer_p, subaccount: [] };
-			const main = { owner: main_p, subaccount: [] };
-			try {
-				const links_res = await this.anon.iilink_icrc1_allowances([{
-					proxy, spender, main, token: pay_with_icp? this.icp_token.id_p : this.tcycles_token.id_p,
-				}]);
-				const link = links_res.results[0];
-				this.link = { main_p, allowance: link.allowance, expires_at: link.expires_at };
-				this.get_link_busy = false;
-				this.render();
-			} catch (cause) {
-				this.get_link_busy = false;
-				this.notif.errorToast(`Get link failed`, cause);
-			}
+			return;
 		}
-		
-	};
+		const spender = { owner: this.namer_p, subaccount: [] };
+		const main = { owner: main_p, subaccount: [] };
+		try {
+			const links_res = await this.anon.iilink_icrc1_allowances([{
+				proxy, spender, main,
+				token: pay_with_icp ? this.icp_token.id_p : this.tcycles_token.id_p,
+			}]);
+			const link = links_res.results[0];
+			this.link = { main_p, allowance: link.allowance, expires_at: link.expires_at };
+			this.get_link_busy = false;
+			this.render();
+		} catch (cause) {
+			this.get_link_busy = false;
+			this.render();
+			this.notif.errorToast('Failed to check link allowance', cause);
+		}
+	}
 
 	async filterLinks(allowance, pay_with_icp) {
 		this.filter_links_busy = true;
 		this.render();
-		const proxy = { owner : this.wallet.principal, subaccount: [] }
+		const proxy = { owner: this.wallet.principal, subaccount: [] };
 		const filters = new Map();
 		if (proxy.owner != null) {
-			const spender = { owner : this.namer_p, subaccount: [] };
+			const spender = { owner: this.namer_p, subaccount: [] };
 			let prev_main = [];
 			try {
 				while (true) {
 					const filters_res = await this.anon.iilink_icrc1_sufficient_allowances({
 						proxy, spender, allowance,
-						token: pay_with_icp? this.icp_token.id_p : this.tcycles_token.id_p, 
-						previous: prev_main, take: []
+						token: pay_with_icp ? this.icp_token.id_p : this.tcycles_token.id_p,
+						previous: prev_main, take: [],
 					});
 					if (filters_res.results.length == 0) break;
 					const now = date2nano();
@@ -104,12 +105,12 @@ export default class Linker {
 					}
 				}
 			} catch (cause) {
-				this.notif.errorToast(`Get filtered links failed ${{ prev_main }}`, cause);
+				this.notif.errorToast('Failed to search linked principals', cause);
 			}
-		} 
+		}
 		this.filter_links_busy = false;
 		this.filters.clear();
 		this.filters = filters;
 		this.render();
-	};
+	}
 }

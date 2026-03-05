@@ -8,6 +8,10 @@
         // Once you improved the headers for your dapp, set the security policy to "hardened" to disable the warning.
         // Options are: "hardened" | "standard" | "disabled".
         "security_policy": "standard",
+        "headers": {
+            "Content-Security-Policy": "img-src 'self' data: https://quickchart.io https://api.dicebear.com;",
+            "Permissions-Policy": "clipboard-write=(self)"
+        }
 
         // Uncomment to disable the warning about using the
         // standard security policy, if you understand the risk

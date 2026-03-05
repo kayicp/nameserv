@@ -7,6 +7,7 @@ import Namer from './model/Namer';
 import Linker from './model/Linker';
 import Home from './element/home';
 import Register from './element/register';
+import Profile from './element/profile';
 import { Principal } from '@dfinity/principal';
 
 Principal.prototype.toString = function () {
@@ -34,6 +35,7 @@ const home = new Home(namer);
 
 const linker = new Linker('lhuc4-nqaaa-aaaan-qz3gq-cai', wallet, icp_token, tcycles_token, namer.id_p);
 const register = new Register(namer, linker);
+const profile = new Profile(namer);
 
 pubsub.on('refresh', () => {
   // for (const [token_id_txt, token_detail] of icrc1s) {
@@ -42,18 +44,18 @@ pubsub.on('refresh', () => {
   // linker.get()
 });
 
-
 pubsub.on('render', _render);
 window.addEventListener('popstate', _render);
 
-
 function _render() {
   const pathn = window.location.pathname;
-  let page = html`<div class="text-xs text-slate-400">404: Not Found</div>`;
+  let page = html`<div class="text-slate-400">404: Not Found</div>`;
   if (pathn == Home.PATH) {
     page = home.render();
   } else if (pathn.startsWith(Register.PATH)) {
     page = register.render();
+  } else if (pathn.startsWith(Profile.PATH)) {
+    page = profile.render();
   }
   const body = html`
     <div class="min-h-screen flex flex-col">
@@ -65,7 +67,7 @@ function _render() {
             window.dispatchEvent(new PopStateEvent('popstate'));
             _render();
           }}>
-          ICRC ANS
+          iiname
         </button>
 
         <div class="flex items-center gap-2 ml-2">
@@ -82,7 +84,7 @@ function _render() {
       </main>
 
       <footer class="p-2 text-xs text-slate-400">
-        © ICRC Account Name Service
+        © iiname
       </footer>
 
       ${notif.draw()}
