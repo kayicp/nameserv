@@ -21,18 +21,20 @@ module {
 		duration : {
 			tx_window : Nat64;
 			permitted_drift : Nat64;
+			lock : Nat64;
 		};
 		service_provider : Principal;
-		cmc : ?Text;
+		cmc : Text;
 		max_update_batch_size : Nat;
 		max_query_batch_size : Nat;
 		max_take_value : Nat;
+		update_timeout : Nat32;
+		query_timeout : Nat32;
 		name : {
 			length_tiers : [PriceTier];
 			duration : {
 				max_expiry : Nat64;
 				toll : Nat64;
-				lock : Nat64;
 				packages : [DurationPackage];
 			};
 		};
@@ -67,7 +69,7 @@ module {
 		token : Principal;
 		main : ?ICRC1T.Account; //
 		memo : ?Blob; //
-		created_at : ?Nat64; //
+		created_at : Nat64;
 	};
 	public type RegisterErr = {
 		#GenericError : Error.Type;
@@ -95,7 +97,6 @@ module {
 		#CreatedInFuture : { time : Nat64 };
 		#TooOld;
 		#Duplicate : { of : Nat };
-		#TransferFailed : Linker.TransferFrom1Err;
 	};
 	public type RegisterRes = Result.Type<{ block_index : Nat; main : ICRC1T.Account }, RegisterErr>;
 

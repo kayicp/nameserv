@@ -24,11 +24,10 @@ export NAMER_ID="zyfw5-4qaaa-aaaac-qc7za-cai"
 export FRONTEND="z7eqj-riaaa-aaaac-qc7zq-cai"
 export CMC_ID="rkp4c-7iaaa-aaaaa-aaaca-cai"
 
-# cmc = opt \"$CMC_ID\"
 dfx deploy accountname_backend --no-wallet --specified-id $NAMER_ID --argument "(
   variant {
     Init = record {
-      cmc = null;
+      cmc = \"$CMC_ID\";
       duration = record { 
         tx_window = 86_400_000_000_000;
 				permitted_drift = 120_000_000_000; 

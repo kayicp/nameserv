@@ -204,7 +204,7 @@ export default class Register {
 			</div>
 			<div class="flex gap-2 items-center">
 				<input type="text"
-					placeholder="e.g. alice_42"
+					placeholder="e.g. kayicp"
 					.value=${this.namer.name_str}
 					@input=${(e) => {
 						this.namer.name_str = e.target.value;

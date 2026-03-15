@@ -94,7 +94,7 @@ module {
 		#equal;
 	};
 
-	public func compareProxyExpiry((at : Nat64, (a_proxy_p : Principal, a_proxy_s : Blob), (a_main_p: Principal, a_main_s: Blob)), (bt : Nat64, (b_proxy_p : Principal, b_proxy_s : Blob), (b_main_p: Principal, b_main_s: Blob))) : Order.Order {
+	public func compareProxyExpiry((at : Nat64, (a_proxy_p : Principal, a_proxy_s : Blob), (a_main_p : Principal, a_main_s : Blob)), (bt : Nat64, (b_proxy_p : Principal, b_proxy_s : Blob), (b_main_p : Principal, b_main_s : Blob))) : Order.Order {
 		switch (Nat64.compare(at, bt)) {
 			case (#equal) ();
 			case other return other;
@@ -179,7 +179,7 @@ module {
 		var map = RBTree.empty<Text, Value.Type>();
 		if (arg.main == null) map := Value.setAccountP(map, "main", ?main) else tx := Value.setAccountP(tx, "main", ?main);
 		map := Value.setNat(map, "expires_at", ?Nat64.toNat(expires_at));
-		map := Value.setNat(map, "xfer", ?pay_id);
+		map := Value.setNat(map, "link", ?pay_id);
 		map := Value.setNat(map, "ts", ?Nat64.toNat(now));
 		map := Value.setText(map, "op", ?"register");
 		map := Value.setMap(map, "tx", tx);

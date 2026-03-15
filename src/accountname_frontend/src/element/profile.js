@@ -110,7 +110,7 @@ export default class Profile {
 						Add a name after <span class="font-mono text-slate-300">@</span> to view a profile.
 					</div>
 					<div class="text-[10px] text-slate-600 mt-2 font-mono">
-						${window.location.origin}/@alice_42
+						${window.location.origin}/@kayicp
 					</div>
 				</div>
 			`;

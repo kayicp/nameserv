@@ -203,9 +203,9 @@ export default class Home {
 					<div class="max-w-xs mx-auto">
 						<div class="bg-slate-800/60 rounded-2xl ring-1 ring-slate-700/80 p-6 shadow-xl shadow-slate-900/30">
 							<div class="text-center">
-								<img src="https://api.dicebear.com/9.x/thumbs/svg?seed=alice_42"
+								<img src="https://api.dicebear.com/9.x/thumbs/svg?seed=kayicp"
 									alt="avatar" class="w-20 h-20 rounded-full mx-auto ring-2 ring-slate-700/80 bg-slate-800" />
-								<div class="mt-4 text-lg font-mono font-bold text-slate-100">alice_42</div>
+								<div class="mt-4 text-lg font-mono font-bold text-slate-100">kayicp</div>
 								<div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/[0.08] ring-1 ring-green-500/20 text-green-400 text-[10px] font-medium">
 									<span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
 									Registered
@@ -226,7 +226,7 @@ export default class Home {
 							</div>
 							<div class="mt-4 pt-3 border-t border-slate-700/40 text-center">
 								<div class="text-[10px] text-slate-600 font-mono">
-									${window.location.origin}/@alice_42
+									${window.location.origin}/@kayicp
 								</div>
 							</div>
 						</div>
@@ -390,7 +390,7 @@ export default class Home {
 							<ul class="space-y-3 text-xs text-slate-400">
 								<li class="flex items-start gap-2">
 									<span class="text-green-500 mt-px shrink-0">✓</span>
-									<span>"Send to <span class="font-mono text-green-400">@alice_42</span>" — unmistakable</span>
+									<span>"Send to <span class="font-mono text-green-400">@kayicp</span>" — unmistakable</span>
 								</li>
 								<li class="flex items-start gap-2">
 									<span class="text-green-500 mt-px shrink-0">✓</span>
@@ -402,7 +402,7 @@ export default class Home {
 								</li>
 								<li class="flex items-start gap-2">
 									<span class="text-green-500 mt-px shrink-0">✓</span>
-									<span>One link: <span class="font-mono text-slate-300">/@alice_42</span></span>
+									<span>One link: <span class="font-mono text-slate-300">/@kayicp</span></span>
 								</li>
 							</ul>
 						</div>
@@ -453,7 +453,7 @@ export default class Home {
 							Register a name
 						</button>
 						<button
-							@click=${this._nav('/@alice_42')}
+							@click=${this._nav('/@kayicp')}
 							class="px-8 py-3 text-sm font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 ring-1 ring-slate-700 transition-colors">
 							See a demo profile
 						</button>
