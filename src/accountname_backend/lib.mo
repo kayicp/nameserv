@@ -35,7 +35,7 @@ module {
 	public func isMain(m : T.Main) : Bool = m.name != "" or RBTree.size(m.operators) > 0;
 
 	public func dedupeRegister((ap, a) : (Principal, T.RegisterArg), (bp, b) : (Principal, T.RegisterArg)) : Order.Order {
-		switch (Option.compare(a.created_at, b.created_at, Nat64.compare)) {
+		switch (Nat64.compare(a.created_at, b.created_at)) {
 			case (#equal) ();
 			case other return other;
 		};
@@ -172,10 +172,8 @@ module {
 		tx := Value.setNat(tx, "amt", ?arg.amount);
 		tx := Value.setPrincipal(tx, "token", ?arg.token);
 		tx := Value.setBlob(tx, "memo", arg.memo);
-		switch (arg.created_at) {
-			case (?t) tx := Value.setNat(tx, "ts", ?Nat64.toNat(t));
-			case _ ();
-		};
+		tx := Value.setNat(tx, "ts", ?Nat64.toNat(arg.created_at));
+
 		var map = RBTree.empty<Text, Value.Type>();
 		if (arg.main == null) map := Value.setAccountP(map, "main", ?main) else tx := Value.setAccountP(tx, "main", ?main);
 		map := Value.setNat(map, "expires_at", ?Nat64.toNat(expires_at));

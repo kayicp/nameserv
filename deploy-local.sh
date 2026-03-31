@@ -1,7 +1,9 @@
 clear
 # mops test
 
+# dfx stop
 rm -rf .dfx
+# dfx start --clean --background
 
 echo "$(dfx identity use plug)"
 # export DEFAULT_ACCOUNT_ID=$(dfx ledger account-id)
@@ -28,9 +30,10 @@ dfx deploy accountname_backend --no-wallet --specified-id $NAMER_ID --argument "
   variant {
     Init = record {
       cmc = \"$CMC_ID\";
-      duration = record { 
+      duration = record {
         tx_window = 86_400_000_000_000;
-				permitted_drift = 120_000_000_000; 
+				permitted_drift = 120_000_000_000;
+        lock = 60_000_000_000;
       };
       service_provider = principal \"$PLUG_PRINCIPAL\";
       name = record {
@@ -40,7 +43,6 @@ dfx deploy accountname_backend --no-wallet --specified-id $NAMER_ID --argument "
             record { years_base = 3; months_bonus = 12 };
             record { years_base = 5; months_bonus = 36 };
           };
-          lock = 20_000_000_000;
           toll = 7_200_000_000_000;
           max_expiry = 2_592_000_000_000_000;
         };
@@ -84,6 +86,8 @@ dfx deploy accountname_backend --no-wallet --specified-id $NAMER_ID --argument "
       max_take_value = 100;
       max_query_batch_size = 100;
       max_update_batch_size = 1;
+  		update_timeout = 300;
+      query_timeout = 10;
       archive = record {
         standby = null;
         root = null;

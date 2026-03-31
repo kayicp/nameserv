@@ -77,21 +77,24 @@ module {
 		#UnknownProxy;
 		#UnknownLengthTier;
 		#UnknownDurationPackage : { xdr_permyriad_per_icp : Nat };
+		#DuplicateLocked : {
+      days : Nat64;
+      main : ICRC1T.Account;
+      service_provider : ICRC1T.Account;
+      until : Nat64;
+      xdr_permyriad_per_icp : Nat
+    };
 		#NameTooLong : { maximum_length : Nat };
 		#NamedAccount : Name;
 		#NameReserved : { by : ICRC1T.Account };
-		#Locked : { until : Nat64 };
+		#NameLocked : { until : Nat64 };
 		#InsufficientLinkAllowance : { allowance : Nat };
 		#InsufficientLinkCredits;
 		#InsufficientTokenBalance : { balance : Nat };
 		#InsufficientTokenAllowance : { allowance : Nat };
-		#NoSufficientLinkAllowance : {
-			total : Nat;
-			maximum : { available : Nat; main : ?ICRC1T.Account };
+		#NoSufficientLinkAllowance : { maximum : { available : Nat; main : ?ICRC1T.Account };
 		};
-		#NoEligibleMain : {
-			total : Nat;
-			maximum_balance : { available : Nat; main : ?ICRC1T.Account };
+		#NoEligibleMain : {maximum_balance : { available : Nat; main : ?ICRC1T.Account };
 			maximum_allowance : { available : Nat; main : ?ICRC1T.Account };
 		};
 		#CreatedInFuture : { time : Nat64 };

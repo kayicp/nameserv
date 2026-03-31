@@ -16,6 +16,7 @@ import Nat "mo:base/Nat";
 import Text "mo:base/Text";
 import Buffer "mo:base/Buffer";
 import Nat64 "mo:base/Nat64";
+import Nat32 "mo:base/Nat32";
 import Error "../util/motoko/Error";
 import ICRC3T "../util/motoko/ICRC-3/Types";
 import Subaccount "../util/motoko/Subaccount";
@@ -125,23 +126,20 @@ shared (install) persistent actor class Canister(
     let token_text = Principal.toText(arg.token);
     let is_icp = token_text == ICRC1T.ICP_ID;
     if (not is_icp and token_text != ICRC1T.TCYCLES_ID) return Error.text("Unsupported token; Only ICP (" # ICRC1T.ICP_ID # ") and TCYCLES (" # ICRC1T.TCYCLES_ID # ") are allowed");
-    let (icp_token, tcycles_token) = (actor (ICRC1T.ICP_ID) : ICRC1T.Canister, actor (ICRC1T.TCYCLES_ID) : ICRC1T.Canister);
-    let (icp_fee_call, tcycles_fee_call) = ((with timeout = env.query_timeout) icp_token.icrc1_fee(), (with timeout = env.query_timeout) tcycles_token.icrc1_fee(), (with timeout = env.query_timeout) linker.iilink_credits([self_a]));
-    let (icp_fee, tcycles_fee) = (await icp_xdr_call, await icp_fee_call, await tcycles_fee_call, (await linker_credits_call).results[0]);
-
+    let (icp_token, tcycles_token, linker) = (actor (ICRC1T.ICP_ID) : ICRC1T.Canister, actor (ICRC1T.TCYCLES_ID) : ICRC1T.Canister, actor (Linker.ID) : Linker.Canister);
     let token_can = if (is_icp) icp_token else tcycles_token;
     let locked_until = time.now + env.duration.lock + Time64.SECONDS(Nat64.fromNat(Nat32.toNat(env.update_timeout)));
-    let linker = actor (Linker.ID) : Linker.Canister;
     let linker_a = { owner = Principal.fromActor(linker); subaccount = null };
     let self_a = { owner = Principal.fromActor(Self); subaccount = null };
-    let linker_credit = await (with timeout = env.query_timeout) linker.iilink_credits([self_a]);
+    let linker_credits = await (with timeout = env.query_timeout) linker.iilink_credits([self_a]);
+    if (linker_credits.results[0] == 0) return #Err(#InsufficientLinkCredits);
     let (locked_val, main_sub) = switch (RBTree.get(register_dedupes, L.dedupeRegister, (caller, arg))) {
       case (?#Locked val) if (time.now < val.until) return #Err(#DuplicateLocked { val with service_provider = { owner = val.service_provider; subaccount = null } }) else (val, Subaccount.get(val.main.subaccount));
       case (?#Committed block) return #Err(#Duplicate { of = block });
       case _ {
         let cmc = actor (env.cmc) : CMC.Self;
         let (icp_xdr_call, icp_fee_call, tcycles_fee_call) = ((with timeout = env.query_timeout) cmc.get_icp_xdr_conversion_rate(), (with timeout = env.query_timeout) icp_token.icrc1_fee(), (with timeout = env.query_timeout) tcycles_token.icrc1_fee());
-        let (xdr_permyriad_per_icp, icp_fee, tcycles_fee) = (Nat64.toNat(await icp_xdr_call).data.xdr_permyriad_per_icp, await icp_fee_call, await tcycles_fee_call);
+        let (xdr_permyriad_per_icp, icp_fee, tcycles_fee) = (Nat64.toNat((await icp_xdr_call).data.xdr_permyriad_per_icp), await icp_fee_call, await tcycles_fee_call);
         if (tcycles_fee == 0) return Error.text("TCYCLES fee is zero");
         if (icp_fee == 0) return Error.text("ICP fee is zero");
         if (xdr_permyriad_per_icp == 0) return Error.text("xdr_permyriad_per_icp is zero");
@@ -174,14 +172,14 @@ shared (install) persistent actor class Canister(
         let xfer_and_fee = arg.amount + (if (is_icp) icp_fee else tcycles_fee);
         switch (arg.main) {
           case (?main_a) {
-            let (token_bal_call, token_aprv_call, links_call) = (with timeout = env.query_timeout) ((with timeout = env.query_timeout) token_can.icrc1_balance_of(main_a), (with timeout = env.query_timeout) token_can.icrc2_allowance({ account = main_a; spender = linker_a }), linker.iilink_icrc1_allowances([{ arg with main = main_a; proxy = proxy_a; spender = self_a }]));
-            let (token_bal, token_aprv, link) = (await token_bal_call, await token_aprv_call, await links_call.results[0]);
+            let (token_bal_call, token_aprv_call, links_call) = ((with timeout = env.query_timeout) token_can.icrc1_balance_of(main_a), (with timeout = env.query_timeout) token_can.icrc2_allowance({ account = main_a; spender = linker_a }), (with timeout = env.query_timeout) linker.iilink_icrc1_allowances([{ arg with main = main_a; spender = self_a }]));
+            let (token_bal, token_aprv, link) = (await token_bal_call, await token_aprv_call, (await links_call).results[0]);
             if (link.allowance < xfer_and_fee) return #Err(#InsufficientLinkAllowance link);
-            if (link.expires_at < now) return #Err(#InsufficientLinkAllowance { allowance = 0 });
+            if (link.expires_at < time.now) return #Err(#InsufficientLinkAllowance { allowance = 0 });
             if (token_bal < xfer_and_fee) return #Err(#InsufficientTokenBalance { balance = token_bal });
             if (token_aprv.allowance < xfer_and_fee) return #Err(#InsufficientTokenAllowance token_aprv);
             switch (token_aprv.expires_at) {
-              case (?found) if (found < now) return #Err(#InsufficientTokenAllowance { allowance = 0 });
+              case (?found) if (found < time.now) return #Err(#InsufficientTokenAllowance { allowance = 0 });
               case _ ();
             };
             ({ main = main_a; service_provider = env.service_provider; days; until = locked_until; xdr_permyriad_per_icp }, Subaccount.get(main_a.subaccount));
@@ -212,7 +210,7 @@ shared (install) persistent actor class Canister(
             label calling for ((filtered, main_sub, bal_call, aprv_call) in Queue.iterTail(calls)) {
               let (bal, aprv) = (await bal_call, await aprv_call);
               switch (aprv.expires_at) {
-                case (?found) if (found < now) continue calling;
+                case (?found) if (found < time.now) continue calling;
                 case _ ();
               };
               if (bal > maximum_balance.available) maximum_balance := {
@@ -249,21 +247,21 @@ shared (install) persistent actor class Canister(
     };
     var main_u = L.getPrincipal(users, locked_val.main.owner, RBTree.empty());
     var main = L.getBlob(main_u, main_sub, L.initMain());
-    let start_expiry = if (main.name == "") now else {
-      if (main.locked_until > now) return #Err(#NameLocked { until = main.locked_until });
-      if (main.expires_at > now) {
+    let start_expiry = if (main.name == "") time.now else {
+      if (main.locked_until > time.now) return #Err(#NameLocked { until = main.locked_until });
+      if (main.expires_at > time.now) {
         if (main.name != arg.name) return #Err(#NamedAccount main);
         main.expires_at;
-      } else now;
+      } else time.now;
     };
     switch (RBTree.get(names, Text.compare, arg.name)) {
-      case (?(reserver_p, reserver_sub)) if (reserver_p != main_a.owner or reserver_sub != main_sub) {
+      case (?(reserver_p, reserver_sub)) if (reserver_p != locked_val.main.owner or reserver_sub != main_sub) {
         let reserver = L.getBlob(L.getPrincipal(users, reserver_p, RBTree.empty()), reserver_sub, L.initMain());
-        if (reserver.name == arg.name and (reserver.locked_until > now or reserver.expires_at > now)) return #Err(#NameReserved { by = { owner = reserver_p; subaccount = Subaccount.opt(reserver_sub) } });
+        if (reserver.name == arg.name and (reserver.locked_until > time.now or reserver.expires_at > time.now)) return #Err(#NameReserved { by = { owner = reserver_p; subaccount = Subaccount.opt(reserver_sub) } });
       };
       case _ ();
     };
-    main := { main with locked_until = now + env.name.duration.lock };
+    main := { main with locked_until = time.now + env.duration.lock };
     func save<T>(ret : T) : T {
       main_u := L.saveBlob(main_u, main_sub, main, L.isMain(main));
       users := L.savePrincipal(users, locked_val.main.owner, main_u, RBTree.size(main_u) > 0);
@@ -275,7 +273,7 @@ shared (install) persistent actor class Canister(
     name_expiries := RBTree.insert(name_expiries, L.compareNameExpiry, (main.locked_until, arg.name), ());
     register_dedupes := RBTree.insert(register_dedupes, L.dedupeRegister, (caller, arg), #Locked locked_val);
     func unlock<T>(ret : T) : T {
-      register_dedupes := RBTree.insert(register_dedupes, L.dedupeRegister, (caller, arg), #Locked { locked_val with until = 0 } );
+      register_dedupes := RBTree.insert(register_dedupes, L.dedupeRegister, (caller, arg), #Locked { locked_val with until = 0 : Nat64 } );
       main_u := L.getPrincipal(users, locked_val.main.owner, RBTree.empty());
       main := L.getBlob(main_u, main_sub, L.initMain());
       if (arg.name != main.name) names := RBTree.delete(names, Text.compare, arg.name);
@@ -297,6 +295,7 @@ shared (install) persistent actor class Canister(
     let pay_id = switch (unlock(pay_res)) {
       case (#Ok ok) ok.block_index;
       case (#Err(#Duplicate { of })) of;
+      case (#Err(#GenericError err)) return save(#Err(#GenericError err));
       case (#Err(#InsufficientLinkCredits)) return save(#Err(#InsufficientLinkCredits));
       case (#Err(#InsufficientLinkAllowance err)) return save(#Err(#InsufficientLinkAllowance err));
       case (#Err(#InsufficientTokenBalance err)) return save(#Err(#InsufficientTokenBalance err));
@@ -305,7 +304,9 @@ shared (install) persistent actor class Canister(
       case (#Err(#NoEligibleMain err)) return save(#Err(#NoEligibleMain err));
       case (#Err(#CreatedInFuture err)) return save(#Err(#CreatedInFuture err));
       case (#Err(#TooOld)) return save(#Err(#TooOld));
-      case (#Err(#Locked err)) return save(#Err(#DuplicateLocked err));
+      case (#Err(#Locked err)) return save(Error.text(debug_show (#Locked err)));
+      case (#Err(#UnknownProxy)) return save(Error.text("UnknownProxy"));
+      // case (#Err(#Unk))
     };
     let proxy_sub = Subaccount.get(proxy_a.subaccount);
     names := RBTree.delete(names, Text.compare, main.name);
@@ -776,7 +777,7 @@ shared (install) persistent actor class Canister(
         case _ break trimming;
       };
       if (exp_t >= now) break trimming;
-      round += 1;
+
       name_expiries := RBTree.delete(name_expiries, L.compareNameExpiry, (exp_t, name));
 
       let (main_p, main_sub) = switch (RBTree.get(names, Text.compare, name)) {
@@ -809,7 +810,7 @@ shared (install) persistent actor class Canister(
     //     case _ break trimming;
     //   };
     //   if (exp_t >= now) break trimming;
-    //   round += 1;
+    //
     //   operator_expiries := RBTree.delete(operator_expiries, L.compareManagerExpiry, (exp_t, (from_p, from_sub), (operator_p, operator_sub)));
 
     //   var main_u = L.getPrincipal(users, from_p, RBTree.empty());
@@ -832,7 +833,7 @@ shared (install) persistent actor class Canister(
         case _ break trimming;
       };
       if (exp_t >= now) break trimming;
-      round += 1;
+
 
       var main_u = L.getPrincipal(users, main_p, RBTree.empty());
       var main = L.getBlob(main_u, main_sub, L.initMain());
@@ -854,22 +855,24 @@ shared (install) persistent actor class Canister(
       proxies := L.savePrincipal(proxies, proxy_p, proxy_ptr, RBTree.size(proxy_ptr) > 0);
     };
     label trimming for (i in Iter.range(0, max_round)) {
-      let (p, arg) = switch (RBTree.minKey(register_dedupes)) {
+      let ((p, arg), stage) = switch (RBTree.min(register_dedupes)) {
         case (?found) found;
         case _ break trimming;
       };
-      round += 1;
-      switch (OptionX.compare(arg.created_at, ?start_time, Nat64.compare)) {
-        case (#less) register_dedupes := RBTree.delete(register_dedupes, L.dedupeRegister, (p, arg));
-        case _ break trimming;
+      switch stage {
+        case (#Committed _) ();
+        case (#Locked { until }) if (until > now) break trimming;
       };
+      if (arg.created_at < start) {
+        register_dedupes := RBTree.delete(register_dedupes, L.dedupeRegister, (p, arg));
+      } else break trimming;
     };
     // label trimming for (i in Iter.range(0, max_round)) {
     //   let (p, arg) = switch (RBTree.minKey(approve_dedupes)) {
     //     case (?found) found;
     //     case _ break trimming;
     //   };
-    //   round += 1;
+    //
     //   switch (OptionX.compare(arg.created_at, ?start_time, Nat64.compare)) {
     //     case (#less) approve_dedupes := RBTree.delete(approve_dedupes, L.dedupeApprove, (p, arg));
     //     case _ break trimming;

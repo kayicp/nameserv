@@ -88,8 +88,8 @@ module {
     iilink_credits : shared query [Account] -> async CreditsOfRes;
     iilink_delegate : shared [DelegateArg] -> async [DelegateRes];
     iilink_icrc1_allowances : shared query [
-      Allowance1Arg
-    ] -> async AllowancesOfRes;
+        Allowance1Arg
+      ] -> async AllowancesOfRes;
     iilink_icrc1_approve : shared [Approve1Arg] -> async [Approve1Res];
     iilink_icrc1_spender_subaccounts : shared query SpenderSubsOfArg -> async SpenderSubsOfRes;
     iilink_icrc1_spenders : shared query SpendersOfArg -> async SpendersOfRes;
@@ -100,8 +100,8 @@ module {
     iilink_mains : shared query MainsOfArg -> async MainsOfRes;
     iilink_proxies : shared query ProxiesOfArg -> async ProxiesOfRes;
     iilink_proxy_expiries : shared query [
-      ProxyExpiriesArg
-    ] -> async ProxyExpiriesRes;
+        ProxyExpiriesArg
+      ] -> async ProxyExpiriesRes;
     iilink_proxy_subaccounts : shared query ProxySubsOfArg -> async ProxySubsOfRes;
     iilink_service_provider : shared query () -> async Account;
     iilink_subaccounts : shared query SubaccountsOfArg -> async SubaccountsOfRes;
@@ -254,7 +254,12 @@ module {
   public type TopupErr = {
     #GenericError : Type;
     #Duplicate : { of : Nat };
-    #Locked : { until : Nat64 };
+    #Locked : {
+      credits : Nat;
+      service_provider : Account;
+      xdr_permyriad_per_icp : Nat;
+      until : Nat64;
+    };
     #CreatedInFuture : { time : Nat64 };
     #InsufficientTokenAllowance : { allowance : Nat };
     #UnknownPrice : { xdr_permyriad_per_icp : Nat };
@@ -284,7 +289,7 @@ module {
     };
     #InsufficientLinkCredits;
     #InsufficientLinkAllowance : { allowance : Nat };
-    #Locked : { until : Nat64 };
+    #Locked : { main : Account; until : Nat64 };
     #CreatedInFuture : { time : Nat64 };
     #InsufficientTokenAllowance : { allowance : Nat };
     #UnknownProxy;

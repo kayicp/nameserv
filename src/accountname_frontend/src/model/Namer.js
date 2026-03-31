@@ -5,12 +5,13 @@ import { shortPrincipal } from '../../../util/js/principal';
 import { idlFactory } from 'declarations/accountname_backend';
 import { Principal } from '@dfinity/principal';
 import { AccountIdentifier } from '@dfinity/ledger-icp';
-import { nano2date } from '../../../util/js/bigint';
+import { nano2date, date2nano } from '../../../util/js/bigint';
 
 // Namer.js
 export default class Namer {
 	service_provider = null;
 	get_busy = false;
+	get_mains_busy = false;
 	check_busy = false;
 	busy = false;
 	mains = new Map();
@@ -20,8 +21,6 @@ export default class Namer {
 
 	name_str = '';
 	name_str_sub = '';
-	selected_renew_main_p = null;
-	selected_register_main_p = null;
 	name_a = null;
 	pay_with_icp = false;
 	selected_year_idx = 0;
@@ -41,7 +40,12 @@ export default class Namer {
 		this.wallet.render();
 	}
 
+	getters_busy() {
+    return this.get_busy || this.get_mains_busy;
+	}
+
 	async get() {
+	  this.getMains();
 		this.get_busy = true;
 		try {
 			if (this.anon == null) this.anon = await genActor(idlFactory, this.id);
@@ -54,58 +58,61 @@ export default class Namer {
 				this.service_provider = service_provider;
 				this.length_tiers = length_tiers;
 				this.duration_packages = duration_packages;
-				this.render();
 			}
-		} catch (cause) {
 			this.get_busy = false;
 			this.render();
-			return this.notif.errorToast(`Namer ${shortPrincipal(this.id_p)} Meta Failed`, cause);
-		}
-		const proxy_a = { owner: this.wallet.principal, subaccount: [] };
-		if (proxy_a.owner == null) { this.get_busy = false; return; }
-
-		const mains = new Map();
-		let prev_main = [];
-		let name_args = [];
-		try {
-			while (true) {
-				const mains_res = await this.anon.icrc_ans_mains({ proxy: proxy_a, previous: prev_main, take: [] });
-				if (mains_res.results.length == 0) break;
-				for (const main_p of mains_res.results) {
-					prev_main = [main_p];
-					const main_p_txt = main_p.toText();
-					mains.set(main_p_txt, { p: main_p, name: '', expires_at: 0n });
-					name_args.push({ owner: main_p, subaccount: [] });
-				}
-			}
 		} catch (cause) {
-			this.notif.errorToast('Failed to load principals', cause);
+			this.get_busy = false;
+			this.notif.errorToast(`Namer ${shortPrincipal(this.id_p)} Meta Failed`, cause);
 		}
-		try {
-			while (name_args.length > 0) {
-				const args = name_args.slice(0, 100);
-				name_args.splice(0, 100);
-				const names_res = await this.anon.icrc_ans_names(args);
-				if (names_res.results.length == 0) break;
-				for (let i = 0; i < names_res.results.length; i++) {
-					const arg = args[i];
-					const res = names_res.results[i];
-					const main = mains.get(arg.owner.toText());
-					main.name = res.name;
-					main.expires_at = res.expires_at;
-				}
-			}
-		} catch (cause) {
-			this.notif.errorToast('Failed to load names', cause);
-		}
-		this.get_busy = false;
-		this.mains.clear();
-		this.mains = mains;
-		this.render();
 	}
 
-	async validateName(getLink) {
-		this.selected_renew_main_p = null;
+	async getMains() {
+    const proxy_a = { owner: this.wallet.principal, subaccount: [] };
+  	if (proxy_a.owner == null) return this.get_mains_busy = false;
+  	this.get_mains_busy = true;
+  	const mains = new Map();
+  	let prev_main = [];
+  	let name_args = [];
+  	try {
+  		while (true) {
+  			const mains_res = await this.anon.icrc_ans_mains({ proxy: proxy_a, previous: prev_main, take: [] });
+  			if (mains_res.results.length == 0) break;
+  			for (const main_p of mains_res.results) {
+  				prev_main = [main_p];
+  				const main_p_txt = main_p.toText();
+  				mains.set(main_p_txt, { p: main_p, name: '', expires_at: 0n });
+  				name_args.push({ owner: main_p, subaccount: [] });
+  			}
+  		}
+  	} catch (cause) {
+  		this.notif.errorToast('Failed to load principals', cause);
+  	}
+  	try {
+  		while (name_args.length > 0) {
+  			const args = name_args.slice(0, 100);
+  			name_args.splice(0, 100);
+  			const names_res = await this.anon.icrc_ans_names(args);
+  			if (names_res.results.length == 0) break;
+  			for (let i = 0; i < names_res.results.length; i++) {
+  				const arg = args[i];
+  				const res = names_res.results[i];
+  				const main = mains.get(arg.owner.toText());
+  				main.name = res.name;
+  				main.expires_at = res.expires_at;
+  			}
+  		}
+  	} catch (cause) {
+  		this.notif.errorToast('Failed to load names', cause);
+  	}
+   	this.get_mains_busy = false;
+   	this.mains.clear();
+   	this.mains = mains;
+   	this.render();
+	}
+
+	async validateName() {
+	  this.get();
 		this.name_a = null;
 		this.name_str_sub = '';
 		this.name_str = this.name_str.trim();
@@ -186,11 +193,6 @@ export default class Namer {
 					this.name_str_sub = `Error: Integrity check failed — ${message}`;
 				}
 			}
-			if (this.name_str_sub.startsWith('Ok: You') && main_a.subaccount.length == 0) {
-				this.selected_renew_main_p = main_a.owner;
-				if (getLink) getLink(main_a.owner, this.pay_with_icp);
-			}
-			this.name_a = main_a;
 		} catch (cause) {
 			const message = cause instanceof Error ? cause.message : String(cause);
 			this.name_str_sub = `Error: Lookup failed — ${message}`;
@@ -199,8 +201,9 @@ export default class Namer {
 		this.render();
 	}
 
-	async register(amount, token, main_p, total_days) {
-		this.notif.confirmPopup(
+	async register(amount, main_p, years_base, months_bonus) {
+		const token = this.pay_with_icp? this.icp_token : this.tcycles_token;
+	  this.notif.confirmPopup(
 			'Confirm name registration',
 			html`
 				<div class="space-y-3 text-xs text-slate-300">
@@ -214,11 +217,11 @@ export default class Namer {
 					</div>
 					<div>
 						<div class="text-slate-400">Duration</div>
-						<div class="text-slate-100">${total_days} days</div>
+						<div class="text-slate-100">${years_base} year(s) + ${months_bonus} months bonus</div>
 					</div>
 					<div class="pt-2 border-t border-slate-700/60">
-						<div class="text-slate-400">Cost</div>
-						<div class="font-mono text-slate-100">${token.cleaner(amount)} ${token.symbol}</div>
+						<div class="text-slate-400">Cost (including transfer fee)</div>
+						<div class="font-mono text-slate-100">${token.cleaner(amount + token.fee)} ${token.symbol}</div>
 					</div>
 				</div>
 			`,
@@ -236,7 +239,7 @@ export default class Namer {
 							token: token.id_p,
 							main: [{ owner: main_p, subaccount: [] }],
 							memo: [],
-							created_at: [],
+							created_at: date2nano(),
 						});
 						this.busy = false;
 						this.render();
