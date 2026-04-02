@@ -29,16 +29,10 @@ export default class CMC {
 	async get() {
 		this.get_busy = true;
 		try {
-			if (is_ic) {
-				if (this.anon == null) this.anon = await genActor(idlFactory, this.id);
-
-				const icp_xdr = await this.anon.get_icp_xdr_conversion_rate();
-				this.xdr_permyriad_per_icp = icp_xdr.data.xdr_permyriad_per_icp;
-				this.timestamp_seconds = icp_xdr.data.timestamp_seconds;
-			} else {
-				this.xdr_permyriad_per_icp = 16_746n;
-				this.timestamp_seconds = Date.now() / 1000;
-			}
+			if (this.anon == null) this.anon = await genActor(idlFactory, this.id);
+			const icp_xdr = await this.anon.get_icp_xdr_conversion_rate();
+			this.xdr_permyriad_per_icp = icp_xdr.data.xdr_permyriad_per_icp;
+			this.timestamp_seconds = icp_xdr.data.timestamp_seconds;
 			this.get_busy = false;
 			this.render();
 		} catch (cause) {

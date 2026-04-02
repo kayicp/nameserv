@@ -802,7 +802,7 @@ shared (install) persistent actor class Canister(
         RBTree.delete(name_expiries, L.compareNameExpiry, (main.expires_at, main.name));
       };
       main_u := L.saveBlob(main_u, main_sub, main, L.isMain(main));
-      users := L.savePrincipal(users, main_p, main_u, RBTree.size(users) > 0);
+      users := L.savePrincipal(users, main_p, main_u, RBTree.size(main_u) > 0);
     };
     // label trimming for (i in Iter.range(0, max_round)) {
     //   let (exp_t, (from_p, from_sub), (operator_p, operator_sub)) = switch (RBTree.minKey(operator_expiries)) {
@@ -833,7 +833,6 @@ shared (install) persistent actor class Canister(
         case _ break trimming;
       };
       if (exp_t >= now) break trimming;
-
 
       var main_u = L.getPrincipal(users, main_p, RBTree.empty());
       var main = L.getBlob(main_u, main_sub, L.initMain());

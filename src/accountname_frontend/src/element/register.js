@@ -211,6 +211,9 @@ export default class Register {
 							disabled:opacity-50 disabled:cursor-not-allowed">
 						${this.cmc.get_busy ? 'Refreshing…' : '↻ Rate'}
 					</button>
+					<span class="text-[10px] text-slate-500">
+						${this.cmc.get_busy ? '' : html`Updated ${(new Date(Number(this.cmc.timestamp_seconds) * 1000)).toLocaleTimeString()}`}
+					</span>
 				` : ''}
 			</div>
 		`;
